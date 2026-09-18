@@ -1,6 +1,6 @@
 import logging
 
-from telegram import Document, Update
+from telegram import Document, ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from bot import storage
@@ -9,25 +9,35 @@ from bot.search import search_all
 
 logger = logging.getLogger(__name__)
 
+BTN_SEARCH = "🔍 Искать вакансии"
+BTN_KEYWORDS = "🔑 Ключевые слова"
+BTN_LOCATION = "📍 Город"
+BTN_CV = "📄 Моё CV"
+
+MAIN_KEYBOARD = ReplyKeyboardMarkup(
+    [[BTN_SEARCH], [BTN_KEYWORDS, BTN_LOCATION], [BTN_CV]],
+    resize_keyboard=True,
+)
+
 WELCOME = (
     "Привет! Я ищу вакансии на Jobindex.dk, Jobnet.dk и IT-jobbank.dk "
     "по вашим ключевым словам.\n\n"
-    "Как начать:\n"
-    "1. /keywords продавец, маркетинг, бухгалтер — ваши ключевые слова через запятую\n"
-    "2. Пришлите файл вашего CV (PDF или Word) — просто отправьте документ в чат\n"
-    "3. /location Aarhus — необязательно, чтобы отфильтровать по городу\n"
-    "4. /search — запустить поиск\n\n"
-    "Команды: /keywords /location /cv /search /help"
+    "Пользуйтесь кнопками внизу экрана:\n"
+    f"{BTN_KEYWORDS} — задать свои ключевые слова через запятую\n"
+    f"{BTN_LOCATION} — необязательно, отфильтровать по городу\n"
+    f"{BTN_CV} — загрузить/проверить своё CV (PDF или Word — просто отправьте файл)\n"
+    f"{BTN_SEARCH} — запустить поиск"
 )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage.ensure_user(update.effective_user.id)
-    await update.message.reply_text(WELCOME)
+    context.user_data.pop("awaiting", None)
+    await update.message.reply_text(WELCOME, reply_markup=MAIN_KEYBOARD)
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(WELCOME)
+    await update.message.reply_text(WELCOME, reply_markup=MAIN_KEYBOARD)
 
 
 async def _save_keywords(update: Update, telegram_id: int, text: str):
@@ -38,44 +48,95 @@ async def _save_keywords(update: Update, telegram_id: int, text: str):
     )
 
 
+async def _prompt_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+    current = storage.get_keywords(telegram_id)
+    if current:
+        await update.message.reply_text(
+            "Текущие ключевые слова: "
+            + ", ".join(current)
+            + "\n\nЧтобы изменить — просто пришлите новые через запятую."
+        )
+    else:
+        await update.message.reply_text(
+            "Пришлите ключевые слова через запятую, например:\n"
+            "продавец, маркетинг, бухгалтер"
+        )
+    context.user_data["awaiting"] = "keywords"
+
+
 async def set_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     text = " ".join(context.args) if context.args else ""
     if not text:
-        current = storage.get_keywords(telegram_id)
-        if current:
-            await update.message.reply_text(
-                "Текущие ключевые слова: " + ", ".join(current)
-            )
-        else:
-            await update.message.reply_text(
-                "Пришлите ключевые слова через запятую, например:\n"
-                "/keywords продавец, маркетинг, бухгалтер"
-            )
-        return
-
-    await _save_keywords(update, telegram_id, text)
-
-
-async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Free-text messages (no leading "/command") are treated as a
-    # keywords update - this is how most people will naturally reply
-    # after the bot asks them to send comma-separated keywords.
-    telegram_id = update.effective_user.id
-    text = (update.message.text or "").strip()
-    if not text:
+        await _prompt_keywords(update, context)
         return
     await _save_keywords(update, telegram_id, text)
 
 
-async def set_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
-    text = " ".join(context.args) if context.args else ""
+async def _save_location(update: Update, telegram_id: int, text: str):
     storage.set_location(telegram_id, text)
     if text:
         await update.message.reply_text(f"Буду фильтровать по городу: {text}")
     else:
         await update.message.reply_text("Фильтр по городу снят — ищу по всей Дании.")
+
+
+async def _prompt_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+    user = storage.get_user(telegram_id)
+    current = (user or {}).get("location") or ""
+    if current:
+        await update.message.reply_text(
+            f"Сейчас фильтр по городу: {current}\n\n"
+            "Пришлите новое название города, или слово 'нет', чтобы искать по всей Дании."
+        )
+    else:
+        await update.message.reply_text(
+            "Пришлите название города, например: Aarhus\n"
+            "(или ничего не присылайте — буду искать по всей Дании)"
+        )
+    context.user_data["awaiting"] = "location"
+
+
+async def set_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await _prompt_location(update, context)
+        return
+    await _save_location(update, telegram_id, text)
+
+
+async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+    text = (update.message.text or "").strip()
+    if not text:
+        return
+
+    if text == BTN_SEARCH:
+        await run_search(update, context)
+        return
+    if text == BTN_KEYWORDS:
+        await _prompt_keywords(update, context)
+        return
+    if text == BTN_LOCATION:
+        await _prompt_location(update, context)
+        return
+    if text == BTN_CV:
+        await cv_status(update, context)
+        return
+
+    awaiting = context.user_data.pop("awaiting", None)
+    if awaiting == "location":
+        if text.lower() in ("нет", "no", "-"):
+            text = ""
+        await _save_location(update, telegram_id, text)
+        return
+
+    # Default: any other free-text message (including the first message
+    # after tapping "Ключевые слова") is treated as a keywords update.
+    await _save_keywords(update, telegram_id, text)
 
 
 async def handle_cv_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -123,7 +184,7 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keywords = storage.get_keywords(telegram_id)
     if not keywords:
         await update.message.reply_text(
-            "Сначала задайте ключевые слова: /keywords SQL, reporting"
+            f"Сначала задайте ключевые слова: нажмите {BTN_KEYWORDS}"
         )
         return
 
