@@ -16,6 +16,11 @@ BOLD_FONT = FONTS_DIR / "DejaVuSans-Bold.ttf"
 def _strip_html(text: str) -> str:
     text = re.sub(r"<br\s*/?>", "\n", text or "")
     text = re.sub(r"<[^>]+>", " ", text)
+    # Some job ads' raw text carries markdown emphasis (**bold**, __bold__,
+    # *italic*) that was never meant to be shown literally in a plain PDF.
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"__(.+?)__", r"\1", text)
+    text = re.sub(r"(?<!\w)\*(\S(?:[^*]*\S)?)\*(?!\w)", r"\1", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
