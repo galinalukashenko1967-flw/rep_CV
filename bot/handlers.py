@@ -19,7 +19,7 @@ from bot.config import UPLOADS_DIR
 from bot.contact_extraction import extract_contact_info
 from bot.letter_generation import generate_cover_letter
 from bot.matching import compute_match
-from bot.pdf_export import vacancy_to_pdf
+from bot.pdf_export import letter_to_pdf, vacancy_to_pdf
 from bot.search import search_all
 from bot.semantic_matching import is_configured as semantic_matching_configured
 from bot.semantic_matching import semantic_match_batch
@@ -498,19 +498,28 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
     contact = extract_contact_info(vacancy)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        pdf_path = Path(tmp_dir) / "vacancy.pdf"
+        safe_name = re.sub(r"[^\w\-]+", "_", vacancy.title)[:60] or "vacancy"
         try:
-            vacancy_to_pdf(vacancy, str(pdf_path), contact=contact)
-            with open(pdf_path, "rb") as f:
-                safe_name = re.sub(r"[^\w\-]+", "_", vacancy.title)[:60] or "vacancy"
+            letter_pdf_path = Path(tmp_dir) / "letter.pdf"
+            letter_to_pdf(letter, vacancy, str(letter_pdf_path))
+            with open(letter_pdf_path, "rb") as f:
                 await message.reply_document(
                     document=f,
-                    filename=f"{safe_name}.pdf",
+                    filename=f"ansogning_{safe_name}.pdf",
+                    caption="Ansøgning в PDF — можно сохранить и распечатать.",
+                )
+
+            vacancy_pdf_path = Path(tmp_dir) / "vacancy.pdf"
+            vacancy_to_pdf(vacancy, str(vacancy_pdf_path), contact=contact)
+            with open(vacancy_pdf_path, "rb") as f:
+                await message.reply_document(
+                    document=f,
+                    filename=f"vakansiya_{safe_name}.pdf",
                     caption="Вакансия в PDF — сверху сводка для лога (контакт, телефон, email, ссылка).",
                 )
         except Exception:
             logger.exception("PDF export failed for %s / %s", telegram_id, vacancy.url)
-            await message.reply_text("Письмо готово, но не получилось сделать PDF с вакансией — попробуйте /apply ещё раз.")
+            await message.reply_text("Письмо готово, но не получилось сделать PDF-файлы — попробуйте /apply ещё раз.")
             return
 
     await message.reply_text(

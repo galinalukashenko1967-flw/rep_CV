@@ -79,3 +79,25 @@ def vacancy_to_pdf(vacancy, output_path: str, contact=None):
 
     pdf.output(output_path)
     return output_path
+
+
+def letter_to_pdf(letter_text: str, vacancy, output_path: str):
+    pdf = FPDF()
+    pdf.add_font("DejaVu", "", str(REGULAR_FONT))
+    pdf.add_font("DejaVu", "B", str(BOLD_FONT))
+    pdf.add_page()
+    pdf.set_margins(20, 20, 20)
+
+    pdf.set_font("DejaVu", "B", 13)
+    pdf.multi_cell(0, 7, f"Ansøgning — {vacancy.title}")
+    pdf.set_x(pdf.l_margin)
+    pdf.set_font("DejaVu", "", 10)
+    pdf.multi_cell(0, 5, vacancy.company)
+    pdf.ln(6)
+
+    pdf.set_x(pdf.l_margin)
+    pdf.set_font("DejaVu", "", 11)
+    pdf.multi_cell(0, 6, letter_text)
+
+    pdf.output(output_path)
+    return output_path
