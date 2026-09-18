@@ -19,10 +19,11 @@ from bot.config import UPLOADS_DIR
 from bot.contact_extraction import extract_contact_info
 from bot.letter_generation import generate_cover_letter
 from bot.matching import compute_match
-from bot.pdf_export import letter_to_pdf, vacancy_to_pdf
+from bot.pdf_export import _strip_html, letter_to_pdf, vacancy_to_pdf
 from bot.search import search_all
 from bot.semantic_matching import is_configured as semantic_matching_configured
 from bot.semantic_matching import semantic_match_batch
+from bot.translation import translate_to_ukrainian
 
 logger = logging.getLogger(__name__)
 
@@ -540,6 +541,36 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
             logger.exception("PDF export failed for %s / %s", telegram_id, vacancy.url)
             await message.reply_text("Лист готовий, але не вдалося зробити PDF-файли — спробуйте /apply ще раз.")
             return
+
+        # Translations are a bonus on top of the two Danish documents
+        # above, not a core deliverable -- if Gemini hiccups here, don't
+        # fail the whole /apply when the letter+PDFs already went out.
+        try:
+            letter_ua = translate_to_ukrainian(letter)
+            letter_ua_path = Path(tmp_dir) / "letter_ua.txt"
+            letter_ua_path.write_text(letter_ua, encoding="utf-8")
+            with open(letter_ua_path, "rb") as f:
+                await message.reply_document(
+                    document=f,
+                    filename=f"ansogning_UA_{safe_name}.txt",
+                    caption="Переклад ansøgning українською — для перевірки, можна редагувати.",
+                )
+
+            vacancy_text = f"{vacancy.title}\n\n{_strip_html(vacancy.description)}"
+            vacancy_ua = translate_to_ukrainian(vacancy_text)
+            vacancy_ua_path = Path(tmp_dir) / "vacancy_ua.txt"
+            vacancy_ua_path.write_text(vacancy_ua, encoding="utf-8")
+            with open(vacancy_ua_path, "rb") as f:
+                await message.reply_document(
+                    document=f,
+                    filename=f"vakansiya_UA_{safe_name}.txt",
+                    caption="Переклад вакансії українською — для перевірки, можна редагувати.",
+                )
+        except Exception:
+            logger.exception("Translation failed for %s / %s", telegram_id, vacancy.url)
+            await message.reply_text(
+                "Не вдалося зробити переклад українською (два файли на датській вище вже готові)."
+            )
 
     await message.reply_text(
         "Що далі?",
