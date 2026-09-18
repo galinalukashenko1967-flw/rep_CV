@@ -35,17 +35,17 @@ def vacancy_to_pdf(vacancy, output_path: str, contact=None):
         # three fields.
         pdf.set_fill_color(240, 240, 240)
         pdf.set_font("DejaVu", "B", 12)
-        pdf.multi_cell(0, 7, "Для лога / отчётности — сводка", fill=True)
+        pdf.multi_cell(0, 7, "Resumé til jobcenter-log", fill=True)
         pdf.set_font("DejaVu", "", 11)
         summary_lines = [
-            ("Вакансия", vacancy.title),
-            ("Компания", vacancy.company),
-            ("Место", vacancy.location),
-            ("Источник", vacancy.source),
-            ("Контактное лицо", contact.name),
-            ("Телефон", contact.phone),
+            ("Job", vacancy.title),
+            ("Virksomhed", vacancy.company),
+            ("Sted", vacancy.location),
+            ("Kilde", vacancy.source),
+            ("Kontaktperson", contact.name),
+            ("Telefon", contact.phone),
             ("Email", contact.email),
-            ("Ссылка", vacancy.url),
+            ("Link", vacancy.url),
         ]
         for label, value in summary_lines:
             if not value:
@@ -63,10 +63,10 @@ def vacancy_to_pdf(vacancy, output_path: str, contact=None):
 
         pdf.set_font("DejaVu", "", 11)
         meta_lines = [
-            ("Компания", vacancy.company),
-            ("Место", vacancy.location),
-            ("Источник", vacancy.source),
-            ("Ссылка", vacancy.url),
+            ("Virksomhed", vacancy.company),
+            ("Sted", vacancy.location),
+            ("Kilde", vacancy.source),
+            ("Link", vacancy.url),
         ]
         for label, value in meta_lines:
             if not value:
@@ -79,11 +79,11 @@ def vacancy_to_pdf(vacancy, output_path: str, contact=None):
 
         pdf.ln(4)
     pdf.set_font("DejaVu", "B", 12)
-    pdf.multi_cell(0, 7, "Описание вакансии")
+    pdf.multi_cell(0, 7, "Jobbeskrivelse")
     pdf.ln(1)
 
     pdf.set_font("DejaVu", "", 10.5)
-    pdf.multi_cell(0, 6, _strip_html(vacancy.description) or "(нет текста описания)")
+    pdf.multi_cell(0, 6, _strip_html(vacancy.description) or "(ingen beskrivelse)")
 
     pdf.output(output_path)
     return output_path
