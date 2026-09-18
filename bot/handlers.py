@@ -7,12 +7,19 @@ from telegram.ext import ContextTypes
 
 from bot import cv_parser, storage
 from bot.config import UPLOADS_DIR
+from bot.letter_generation import generate_cover_letter
 from bot.matching import compute_match
 from bot.search import search_all
 from bot.semantic_matching import is_configured as semantic_matching_configured
 from bot.semantic_matching import semantic_match_batch
 
 logger = logging.getLogger(__name__)
+
+# Last search results per user, so "/apply 3" can look up which vacancy
+# that refers to without re-running the search. In-memory only: lost on
+# restart, but a fresh /search is cheap, so that's an acceptable trade-off
+# for not needing another DB table just for this.
+LAST_RESULTS: dict[int, list] = {}
 
 
 async def send_with_retry(update: Update, text: str, retries: int = 2, **kwargs):
@@ -381,6 +388,7 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     MAX_RESULTS = 20
     to_send = scored[:MAX_RESULTS]
+    LAST_RESULTS[telegram_id] = [v for v, percent, detail in to_send]
 
     sent_urls = []
     for i in range(0, len(to_send), 5):
@@ -403,4 +411,59 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(new_vacancies) > MAX_RESULTS
         else "Это все новые вакансии на сейчас."
     )
+    footer += "\n\nЧтобы получить ansøgning под конкретную вакансию — напишите: /apply <номер>"
     await send_with_retry(update, footer, reply_markup=build_keyboard(telegram_id))
+
+
+async def apply_to_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text(
+            "Укажите номер вакансии из последнего списка, например: /apply 3"
+        )
+        return
+
+    index = int(context.args[0])
+    results = LAST_RESULTS.get(telegram_id) or []
+    if not results:
+        await update.message.reply_text(
+            "Сначала запустите поиск — нажмите 🔍 Искать вакансии."
+        )
+        return
+    if not (1 <= index <= len(results)):
+        await update.message.reply_text(
+            f"Нет вакансии №{index} — в последнем списке их {len(results)}."
+        )
+        return
+
+    cv_text = storage.get_cv_text(telegram_id)
+    if not cv_text:
+        await update.message.reply_text(
+            "Не нашёл текст вашего CV — пришлите файл ещё раз через 📄 Моё CV."
+        )
+        return
+
+    if not semantic_matching_configured():
+        await update.message.reply_text(
+            "Генерация писем сейчас недоступна (не настроен доступ к модели)."
+        )
+        return
+
+    vacancy = results[index - 1]
+    await send_with_retry(update, f"Пишу ansøgning для «{vacancy.title}»...")
+
+    try:
+        letter = generate_cover_letter(cv_text, vacancy)
+    except Exception:
+        logger.exception("Letter generation failed for %s / %s", telegram_id, vacancy.url)
+        await update.message.reply_text(
+            "Не получилось сгенерировать письмо (сбой на стороне модели). Попробуйте ещё раз."
+        )
+        return
+
+    await send_with_retry(
+        update,
+        f"{vacancy.title} — {vacancy.company}\n{vacancy.url}\n\n{letter}",
+        reply_markup=build_keyboard(telegram_id),
+    )
