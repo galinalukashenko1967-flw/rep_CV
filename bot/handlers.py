@@ -1,6 +1,8 @@
+import asyncio
 import logging
 
 from telegram import Document, ReplyKeyboardMarkup, Update
+from telegram.error import NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
 from bot import storage
@@ -8,6 +10,26 @@ from bot.config import UPLOADS_DIR
 from bot.search import search_all
 
 logger = logging.getLogger(__name__)
+
+
+async def send_with_retry(update: Update, text: str, retries: int = 2, **kwargs):
+    """update.message.reply_text, but survives a flaky connection to Telegram.
+
+    A single dropped connection (seen in practice as httpx.ConnectTimeout /
+    telegram.error.TimedOut) used to kill the whole /search silently, with
+    the user never finding out anything failed. Retry a couple of times
+    with a short backoff before giving up.
+    """
+    last_error = None
+    for attempt in range(retries + 1):
+        try:
+            return await update.message.reply_text(text, **kwargs)
+        except (TimedOut, NetworkError) as exc:
+            last_error = exc
+            logger.warning("send_with_retry: attempt %s failed: %s", attempt + 1, exc)
+            if attempt < retries:
+                await asyncio.sleep(2 * (attempt + 1))
+    raise last_error
 
 BTN_SEARCH = "🔍 Искать вакансии"
 BTN_KEYWORDS = "🔑 Ключевые слова"
@@ -250,10 +272,11 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = storage.get_user(telegram_id)
     location = (user or {}).get("location") or None
 
-    await update.message.reply_text(
+    await send_with_retry(
+        update,
         f"Ищу по словам: {', '.join(keywords)}"
         + (f" в {location}" if location else " по всей Дании")
-        + " ..."
+        + " ...",
     )
 
     vacancies = search_all(keywords, location)
@@ -263,7 +286,8 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_vacancies = [v for v in vacancies if v.url in unseen_urls or not v.url]
 
     if not new_vacancies:
-        await update.message.reply_text(
+        await send_with_retry(
+            update,
             "Новых вакансий не нашлось (или все уже присылал раньше).",
             reply_markup=build_keyboard(telegram_id),
         )
@@ -272,14 +296,19 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     MAX_RESULTS = 20
     to_send = new_vacancies[:MAX_RESULTS]
 
+    sent_urls = []
     for i in range(0, len(to_send), 5):
         chunk = to_send[i : i + 5]
         text = "\n\n".join(
             format_vacancy(i + j + 1, v) for j, v in enumerate(chunk)
         )
-        await update.message.reply_text(text, disable_web_page_preview=True)
+        # If this raises after retries, mark_seen below still records
+        # whatever went out in earlier chunks, so a retried /search
+        # doesn't re-send vacancies the person already saw.
+        await send_with_retry(update, text, disable_web_page_preview=True)
+        sent_urls.extend(v.url for v in chunk if v.url)
 
-    storage.mark_seen(telegram_id, [v.url for v in to_send if v.url])
+    storage.mark_seen(telegram_id, sent_urls)
 
     footer = (
         f"...и ещё {len(new_vacancies) - MAX_RESULTS}. "
@@ -287,4 +316,4 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(new_vacancies) > MAX_RESULTS
         else "Это все новые вакансии на сейчас."
     )
-    await update.message.reply_text(footer, reply_markup=build_keyboard(telegram_id))
+    await send_with_retry(update, footer, reply_markup=build_keyboard(telegram_id))

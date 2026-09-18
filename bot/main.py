@@ -1,6 +1,7 @@
 import logging
 
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from bot import handlers, storage
 from bot.config import TELEGRAM_BOT_TOKEN
@@ -10,11 +11,37 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
+logger = logging.getLogger(__name__)
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    # Without this, an exception (e.g. a transient network timeout talking
+    # to Telegram) just gets logged and the user is left staring at
+    # nothing with no idea anything went wrong - see the ConnectTimeout
+    # that silently killed a /search mid-results.
+    logger.exception("Unhandled exception while processing update", exc_info=context.error)
+
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "Что-то пошло не так (похоже, сбой сети). Попробуйте ещё раз."
+            )
+        except Exception:
+            logger.exception("Could not even notify the user about the earlier error")
+
 
 def main():
     storage.init_db()
 
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .connect_timeout(20)
+        .read_timeout(20)
+        .get_updates_connect_timeout(20)
+        .get_updates_read_timeout(20)
+        .build()
+    )
 
     app.add_handler(CommandHandler("start", handlers.start))
     app.add_handler(CommandHandler("help", handlers.help_cmd))
@@ -26,6 +53,7 @@ def main():
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_plain_text)
     )
+    app.add_error_handler(error_handler)
 
     logging.info("Bot starting (polling)...")
     app.run_polling()
