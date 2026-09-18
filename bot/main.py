@@ -1,7 +1,14 @@
 import logging
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 from bot import handlers, storage
 from bot.config import TELEGRAM_BOT_TOKEN
@@ -51,6 +58,7 @@ def main():
     app.add_handler(CommandHandler("search", handlers.run_search))
     app.add_handler(CommandHandler("reset", handlers.reset_seen))
     app.add_handler(CommandHandler("apply", handlers.apply_to_vacancy))
+    app.add_handler(CallbackQueryHandler(handlers.handle_callback))
     app.add_handler(MessageHandler(filters.Document.ALL, handlers.handle_cv_upload))
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_plain_text)

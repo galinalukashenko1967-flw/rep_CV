@@ -4,7 +4,13 @@ import re
 import tempfile
 from pathlib import Path
 
-from telegram import Document, ReplyKeyboardMarkup, Update
+from telegram import (
+    Document,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    Update,
+)
 from telegram.error import NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
@@ -38,7 +44,7 @@ async def send_with_retry(update: Update, text: str, retries: int = 2, **kwargs)
     last_error = None
     for attempt in range(retries + 1):
         try:
-            return await update.message.reply_text(text, **kwargs)
+            return await update.effective_message.reply_text(text, **kwargs)
         except (TimedOut, NetworkError) as exc:
             last_error = exc
             logger.warning("send_with_retry: attempt %s failed: %s", attempt + 1, exc)
@@ -393,21 +399,9 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     MAX_RESULTS = 20
     to_send = scored[:MAX_RESULTS]
-    LAST_RESULTS[telegram_id] = [v for v, percent, detail in to_send]
+    LAST_RESULTS[telegram_id] = to_send
 
-    sent_urls = []
-    for i in range(0, len(to_send), 5):
-        chunk = to_send[i : i + 5]
-        text = "\n\n".join(
-            format_vacancy(i + j + 1, v, percent, detail)
-            for j, (v, percent, detail) in enumerate(chunk)
-        )
-        # If this raises after retries, mark_seen below still records
-        # whatever went out in earlier chunks, so a retried /search
-        # doesn't re-send vacancies the person already saw.
-        await send_with_retry(update, text, disable_web_page_preview=True)
-        sent_urls.extend(v.url for v, percent, detail in chunk if v.url)
-
+    sent_urls = await _send_results_chunks(update, to_send)
     storage.mark_seen(telegram_id, sent_urls)
 
     footer = (
@@ -420,51 +414,67 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_with_retry(update, footer, reply_markup=build_keyboard(telegram_id))
 
 
-async def apply_to_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
-
-    if not context.args or not context.args[0].isdigit():
-        await update.message.reply_text(
-            "Укажите номер вакансии из последнего списка, например: /apply 3"
+async def _send_results_chunks(update: Update, to_send: list) -> list[str]:
+    """Sends the numbered vacancy list in chunks of 5. Returns the URLs
+    that were actually sent, so the caller can mark them seen even if a
+    later chunk fails partway through."""
+    sent_urls = []
+    for i in range(0, len(to_send), 5):
+        chunk = to_send[i : i + 5]
+        text = "\n\n".join(
+            format_vacancy(i + j + 1, v, percent, detail)
+            for j, (v, percent, detail) in enumerate(chunk)
         )
-        return
+        await send_with_retry(update, text, disable_web_page_preview=True)
+        sent_urls.extend(v.url for v, percent, detail in chunk if v.url)
+    return sent_urls
 
-    index = int(context.args[0])
+
+def _apply_keyboard(telegram_id: int, index: int):
+    results = LAST_RESULTS.get(telegram_id) or []
+    row = []
+    if index < len(results):
+        row.append(
+            InlineKeyboardButton(
+                f"➡️ Следующая (№{index + 1})", callback_data=f"apply:{index + 1}"
+            )
+        )
+    buttons = [row] if row else []
+    buttons.append(
+        [InlineKeyboardButton("📋 Показать список снова", callback_data="relist")]
+    )
+    return InlineKeyboardMarkup(buttons)
+
+
+async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_TYPE, index: int):
+    telegram_id = update.effective_user.id
+    message = update.effective_message
+
     results = LAST_RESULTS.get(telegram_id) or []
     if not results:
-        await update.message.reply_text(
-            "Сначала запустите поиск — нажмите 🔍 Искать вакансии."
-        )
+        await message.reply_text("Сначала запустите поиск — нажмите 🔍 Искать вакансии.")
         return
     if not (1 <= index <= len(results)):
-        await update.message.reply_text(
-            f"Нет вакансии №{index} — в последнем списке их {len(results)}."
-        )
+        await message.reply_text(f"Нет вакансии №{index} — в последнем списке их {len(results)}.")
         return
 
     cv_text = storage.get_cv_text(telegram_id)
     if not cv_text:
-        await update.message.reply_text(
-            "Не нашёл текст вашего CV — пришлите файл ещё раз через 📄 Моё CV."
-        )
+        await message.reply_text("Не нашёл текст вашего CV — пришлите файл ещё раз через 📄 Моё CV.")
         return
 
     if not semantic_matching_configured():
-        await update.message.reply_text(
-            "Генерация писем сейчас недоступна (не настроен доступ к модели)."
-        )
+        await message.reply_text("Генерация писем сейчас недоступна (не настроен доступ к модели).")
         return
 
-    vacancy = results[index - 1]
+    vacancy, percent, detail = results[index - 1]
     await send_with_retry(update, f"Пишу ansøgning для «{vacancy.title}»...")
 
     try:
         letter = generate_cover_letter(cv_text, vacancy)
     except Exception:
         logger.exception("Letter generation failed for %s / %s", telegram_id, vacancy.url)
-        await update.message.reply_text(
-            "Не получилось сгенерировать письмо (сбой на стороне модели). Попробуйте ещё раз."
-        )
+        await message.reply_text("Не получилось сгенерировать письмо (сбой на стороне модели). Попробуйте ещё раз.")
         return
 
     await send_with_retry(
@@ -480,15 +490,52 @@ async def apply_to_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
             vacancy_to_pdf(vacancy, str(pdf_path), contact=contact)
             with open(pdf_path, "rb") as f:
                 safe_name = re.sub(r"[^\w\-]+", "_", vacancy.title)[:60] or "vacancy"
-                await update.message.reply_document(
+                await message.reply_document(
                     document=f,
                     filename=f"{safe_name}.pdf",
                     caption="Вакансия в PDF — сверху сводка для лога (контакт, телефон, email, ссылка).",
-                    reply_markup=build_keyboard(telegram_id),
                 )
         except Exception:
             logger.exception("PDF export failed for %s / %s", telegram_id, vacancy.url)
-            await update.message.reply_text(
-                "Письмо готово, но не получилось сделать PDF с вакансией — попробуйте /apply ещё раз.",
+            await message.reply_text("Письмо готово, но не получилось сделать PDF с вакансией — попробуйте /apply ещё раз.")
+            return
+
+    await message.reply_text(
+        "Что дальше?",
+        reply_markup=_apply_keyboard(telegram_id, index),
+    )
+
+
+async def apply_to_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text(
+            "Укажите номер вакансии из последнего списка, например: /apply 3"
+        )
+        return
+    await _apply_to_vacancy_core(update, context, int(context.args[0]))
+
+
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    telegram_id = update.effective_user.id
+    data = query.data or ""
+
+    if data.startswith("apply:"):
+        index = int(data.split(":", 1)[1])
+        await _apply_to_vacancy_core(update, context, index)
+        return
+
+    if data == "relist":
+        results = LAST_RESULTS.get(telegram_id) or []
+        if not results:
+            await update.effective_message.reply_text(
+                "Список пуст — нажмите 🔍 Искать вакансии.",
                 reply_markup=build_keyboard(telegram_id),
             )
+            return
+        await _send_results_chunks(update, results)
+        await update.effective_message.reply_text(
+            "Чтобы получить ansøgning под вакансию — напишите: /apply <номер>",
+            reply_markup=build_keyboard(telegram_id),
+        )
