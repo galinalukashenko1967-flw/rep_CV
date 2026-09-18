@@ -482,7 +482,7 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         + " ...",
     )
 
-    vacancies = search_all(keywords, location)
+    vacancies = await asyncio.to_thread(search_all, keywords, location)
 
     urls = [v.url for v in vacancies if v.url]
     unseen_urls = storage.filter_unseen(telegram_id, urls)
@@ -497,7 +497,7 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    scored = _score_vacancies(telegram_id, new_vacancies, keywords)
+    scored = await asyncio.to_thread(_score_vacancies, telegram_id, new_vacancies, keywords)
     scored.sort(key=lambda triple: triple[1], reverse=True)
 
     MAX_RESULTS = 20
@@ -587,7 +587,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
     await send_with_retry(update, f"Пишу ansøgning для «{vacancy.title}»...")
 
     try:
-        letter = generate_cover_letter(cv_text, vacancy)
+        letter = await asyncio.to_thread(generate_cover_letter, cv_text, vacancy)
     except Exception:
         logger.exception("Letter generation failed for %s / %s", telegram_id, vacancy.url)
         await message.reply_text("Не вдалося згенерувати лист (збій на боці моделі). Спробуйте ще раз.")
@@ -598,7 +598,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
         f"{vacancy.title} — {vacancy.company}\n{vacancy.url}\n\n{letter}",
     )
 
-    contact = extract_contact_info(vacancy)
+    contact = await asyncio.to_thread(extract_contact_info, vacancy)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         safe_name = re.sub(r"[^\w\-]+", "_", vacancy.title)[:60] or "vacancy"
@@ -629,7 +629,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
         # above, not a core deliverable -- if Gemini hiccups here, don't
         # fail the whole /apply when the letter+PDFs already went out.
         try:
-            letter_ua = translate_to_ukrainian(letter)
+            letter_ua = await asyncio.to_thread(translate_to_ukrainian, letter)
             letter_ua_path = Path(tmp_dir) / "letter_ua.txt"
             letter_ua_path.write_text(letter_ua, encoding="utf-8")
             with open(letter_ua_path, "rb") as f:
@@ -640,7 +640,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
                 )
 
             vacancy_text = f"{vacancy.title}\n\n{_strip_html(vacancy.description)}"
-            vacancy_ua = translate_to_ukrainian(vacancy_text)
+            vacancy_ua = await asyncio.to_thread(translate_to_ukrainian, vacancy_text)
             vacancy_ua_path = Path(tmp_dir) / "vacancy_ua.txt"
             vacancy_ua_path.write_text(vacancy_ua, encoding="utf-8")
             with open(vacancy_ua_path, "rb") as f:
