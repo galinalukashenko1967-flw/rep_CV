@@ -145,15 +145,15 @@ async def _prompt_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = (
             "Поточні ключові слова: "
             + ", ".join(current)
-            + "\n\nЩоб змінити — надішліть нові через кому, або натисніть Скасувати."
+            + "\n\n<b>Щоб змінити — надішліть нові через кому</b>, або натисніть Скасувати."
         )
     else:
         message = (
-            "Надішліть ключові слова через кому, наприклад:\n"
+            "<b>Надішліть ключові слова через кому</b>, наприклад:\n"
             "продавець, маркетинг, бухгалтер\n\n"
             "Або натисніть Скасувати, якщо передумали."
         )
-    await update.message.reply_text(message, reply_markup=CANCEL_KEYBOARD)
+    await update.message.reply_text(message, reply_markup=CANCEL_KEYBOARD, parse_mode="HTML")
     context.user_data["awaiting"] = "keywords"
 
 
@@ -183,16 +183,18 @@ async def _prompt_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if current:
         message = (
             f"Зараз фільтр за містом: {current}\n\n"
-            f"Надішліть нову назву міста, натисніть «{BTN_ALL_DENMARK}» "
+            f"<b>Надішліть нову назву міста</b>, натисніть «{BTN_ALL_DENMARK}» "
             "(зняти фільтр зовсім), або «Скасувати», щоб залишити як є."
         )
     else:
         message = (
-            "Надішліть назву міста, наприклад: Aarhus\n\n"
+            "<b>Надішліть назву міста</b>, наприклад: Aarhus\n\n"
             f"Я і так вже шукаю по всій Данії — «{BTN_ALL_DENMARK}» і «Скасувати» "
             "тут роблять те саме."
         )
-    await update.message.reply_text(message, reply_markup=LOCATION_KEYBOARD)
+    await update.message.reply_text(
+        message, reply_markup=LOCATION_KEYBOARD, parse_mode="HTML"
+    )
     context.user_data["awaiting"] = "location"
 
 
