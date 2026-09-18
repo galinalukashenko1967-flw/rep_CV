@@ -113,6 +113,17 @@ def mark_seen(telegram_id: int, urls: list[str]):
         )
 
 
+def clear_seen(telegram_id: int) -> int:
+    """Forget every vacancy already shown to this user, so the next
+    /search can show them all again (e.g. after switching keywords or
+    city, if they want a fresh full list rather than only what's new)."""
+    with get_conn() as conn:
+        cursor = conn.execute(
+            "DELETE FROM seen_vacancies WHERE telegram_id = ?", (telegram_id,)
+        )
+        return cursor.rowcount
+
+
 def filter_unseen(telegram_id: int, urls: list[str]) -> set[str]:
     with get_conn() as conn:
         rows = conn.execute(

@@ -39,6 +39,8 @@ BTN_KEYWORDS = "🔑 Ключевые слова"
 BTN_LOCATION = "📍 Город"
 BTN_CV = "📄 Моё CV"
 BTN_CANCEL = "❌ Отмена"
+BTN_ALL_DENMARK = "🌍 Вся Дания"
+BTN_RESET_SEEN = "🔄 Показать вакансии заново"
 
 # Required before the Search button appears at all.
 REQUIRED_FOR_SEARCH = (BTN_KEYWORDS, BTN_CV)
@@ -52,7 +54,7 @@ def _is_ready_for_search(telegram_id: int) -> bool:
 
 
 def build_keyboard(telegram_id: int) -> ReplyKeyboardMarkup:
-    rows = [[BTN_KEYWORDS, BTN_LOCATION], [BTN_CV]]
+    rows = [[BTN_KEYWORDS, BTN_LOCATION], [BTN_CV], [BTN_RESET_SEEN]]
     if _is_ready_for_search(telegram_id):
         rows.insert(0, [BTN_SEARCH])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
@@ -62,6 +64,13 @@ def build_keyboard(telegram_id: int) -> ReplyKeyboardMarkup:
 # free-text reply (keywords / city), so there's always an obvious way out
 # if the person changes their mind instead of typing anything.
 CANCEL_KEYBOARD = ReplyKeyboardMarkup([[BTN_CANCEL]], resize_keyboard=True)
+
+# Shown specifically while waiting for a city: Cancel alone only means
+# "leave the current filter as it was" (confusing when the person actually
+# wants to switch TO nationwide search), so offer that as its own button.
+LOCATION_KEYBOARD = ReplyKeyboardMarkup(
+    [[BTN_ALL_DENMARK], [BTN_CANCEL]], resize_keyboard=True
+)
 
 
 def _missing_requirements(telegram_id: int) -> list[str]:
@@ -160,16 +169,16 @@ async def _prompt_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if current:
         message = (
             f"Сейчас фильтр по городу: {current}\n\n"
-            "Пришлите новое название города, слово 'нет' (искать по всей Дании), "
-            "или нажмите Отмена, чтобы оставить как есть."
+            f"Пришлите новое название города, нажмите «{BTN_ALL_DENMARK}» "
+            "(снять фильтр совсем), или «Отмена», чтобы оставить как есть."
         )
     else:
         message = (
             "Пришлите название города, например: Aarhus\n\n"
-            "Или нажмите Отмена, если не хотите ограничивать город "
-            "(тогда буду искать по всей Дании)."
+            f"Уже и так ищу по всей Дании — «{BTN_ALL_DENMARK}» и «Отмена» "
+            "здесь делают то же самое."
         )
-    await update.message.reply_text(message, reply_markup=CANCEL_KEYBOARD)
+    await update.message.reply_text(message, reply_markup=LOCATION_KEYBOARD)
     context.user_data["awaiting"] = "location"
 
 
@@ -194,6 +203,10 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Хорошо, отменил.", reply_markup=build_keyboard(telegram_id)
         )
         return
+    if text == BTN_ALL_DENMARK:
+        context.user_data.pop("awaiting", None)
+        await _save_location(update, telegram_id, "")
+        return
     if text == BTN_SEARCH:
         await run_search(update, context)
         return
@@ -205,6 +218,9 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if text == BTN_CV:
         await cv_status(update, context)
+        return
+    if text == BTN_RESET_SEEN:
+        await reset_seen(update, context)
         return
 
     awaiting = context.user_data.pop("awaiting", None)
@@ -267,6 +283,16 @@ async def cv_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message = "CV ещё не загружено — пришлите файл документом (PDF или Word)."
     await _reply_with_next_step(update, telegram_id, message)
+
+
+async def reset_seen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+    count = storage.clear_seen(telegram_id)
+    await update.message.reply_text(
+        f"Готово, забыл {count} уже показанных вакансий — "
+        "следующий поиск покажет их снова.",
+        reply_markup=build_keyboard(telegram_id),
+    )
 
 
 def format_vacancy(index: int, v, percent: int, detail: str) -> str:
@@ -344,7 +370,8 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not new_vacancies:
         await send_with_retry(
             update,
-            "Новых вакансий не нашлось (или все уже присылал раньше).",
+            "Новых вакансий не нашлось (или все уже присылал раньше). "
+            f"Если хотите увидеть их снова — нажмите «{BTN_RESET_SEEN}».",
             reply_markup=build_keyboard(telegram_id),
         )
         return
