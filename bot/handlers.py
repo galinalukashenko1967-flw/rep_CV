@@ -99,6 +99,20 @@ def _missing_requirements(telegram_id: int) -> list[str]:
     return missing
 
 
+DISCLAIMER = (
+    "⚠️ Перед тим як почати, важливо знати:\n\n"
+    "• Якщо після старту щось не відповідає одразу — почекайте трохи "
+    "або натисніть /start ще раз (буває, бот саме перезапускається).\n\n"
+    "• Бот шукає вакансії та готує чернетки листів (ansøgning) — "
+    "але <b>сам нічого нікуди не подає</b>. Подати заявку на сайті "
+    "компанії за посиланням треба самостійно.\n\n"
+    "• Файли, які надішле бот (ansøgning, вакансія та їх переклад), "
+    "потрібно самостійно зберегти, прочитати переклад і, за потреби, "
+    "відредагувати перед тим, як надсилати.\n\n"
+    "• Заповнити лог на Jobnet (для звітності перед комуною) — теж "
+    "самостійно, бот цього не робить."
+)
+
 WELCOME = (
     "Привіт! Я шукаю вакансії на Jobindex.dk, Jobnet.dk та LinkedIn "
     "за вашими ключовими словами.\n\n"
@@ -114,6 +128,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     storage.ensure_user(telegram_id)
     context.user_data.pop("awaiting", None)
+    await update.message.reply_text(DISCLAIMER, parse_mode="HTML")
     await update.message.reply_text(WELCOME, reply_markup=build_keyboard(telegram_id))
 
 
