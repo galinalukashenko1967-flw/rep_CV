@@ -15,6 +15,7 @@ from telegram.error import NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
 from bot import cv_parser, storage
+from bot.danish_cities import resolve_city
 from bot.config import UPLOADS_DIR
 from bot.contact_extraction import extract_contact_info
 from bot.letter_generation import generate_cover_letter
@@ -176,6 +177,48 @@ async def _save_location(update: Update, telegram_id: int, text: str):
     await _reply_with_next_step(update, telegram_id, message)
 
 
+async def _resolve_and_save_location(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, telegram_id: int, raw_text: str
+):
+    """Checks the typed city against the official list of 99 Danish
+    municipalities (bot/danish_cities.py) before saving, so a typo or an
+    old spelling (Århus) doesn't silently turn into a filter that matches
+    nothing. Confident matches get auto-corrected; weak matches get a
+    clarifying re-prompt instead of being saved outright; a name that
+    doesn't match anything at all is still saved (it might be a real
+    postal town like "Viby J" that just isn't a kommune), but with a
+    heads-up that it's not in the official list.
+    """
+    if not raw_text:
+        await _save_location(update, telegram_id, "")
+        return
+
+    canonical, suggestions = resolve_city(raw_text)
+
+    if canonical:
+        if canonical.lower() != raw_text.strip().lower():
+            await update.message.reply_text(f"Зрозумів як: {canonical}")
+        await _save_location(update, telegram_id, canonical)
+        return
+
+    if suggestions:
+        await update.message.reply_text(
+            f"Не знайшов міста «{raw_text}» серед офіційних муніципалітетів Данії.\n\n"
+            f"Можливо, ви мали на увазі: {', '.join(suggestions)}?\n\n"
+            "Надішліть правильну назву, або натисніть Скасувати, щоб залишити без змін.",
+            reply_markup=CANCEL_KEYBOARD,
+        )
+        context.user_data["awaiting"] = "location"
+        return
+
+    await update.message.reply_text(
+        f"«{raw_text}» немає в списку офіційних муніципалітетів Данії — "
+        "можливо, це район/місто всередині якогось муніципалітету "
+        "(таке теж буває), збережу як є, але пошук може нічого не знайти."
+    )
+    await _save_location(update, telegram_id, raw_text)
+
+
 async def _prompt_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     user = storage.get_user(telegram_id)
@@ -204,7 +247,7 @@ async def set_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         await _prompt_location(update, context)
         return
-    await _save_location(update, telegram_id, text)
+    await _resolve_and_save_location(update, context, telegram_id, text)
 
 
 async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -243,7 +286,7 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if awaiting == "location":
         if text.lower() in ("нет", "ні", "no", "-"):
             text = ""
-        await _save_location(update, telegram_id, text)
+        await _resolve_and_save_location(update, context, telegram_id, text)
         return
 
     # A bare number (no /apply, no other pending state) almost always means
