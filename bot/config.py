@@ -8,6 +8,10 @@ load_dotenv(BASE_DIR / ".env")
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 
+# Optional: without this, the bot falls back to plain keyword matching
+# instead of real semantic CV-vs-vacancy comparison (see bot/semantic_matching.py).
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 

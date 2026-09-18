@@ -5,10 +5,12 @@ from telegram import Document, ReplyKeyboardMarkup, Update
 from telegram.error import NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
-from bot import storage
+from bot import cv_parser, storage
 from bot.config import UPLOADS_DIR
 from bot.matching import compute_match
 from bot.search import search_all
+from bot.semantic_matching import is_configured as semantic_matching_configured
+from bot.semantic_matching import semantic_match_batch
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +239,23 @@ async def handle_cv_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await tg_file.download_to_drive(custom_path=str(dest_path))
 
     storage.set_cv_path(telegram_id, str(dest_path))
+
+    try:
+        cv_text = cv_parser.extract_text(str(dest_path))
+        storage.set_cv_text(telegram_id, cv_text)
+    except Exception as exc:
+        logger.warning("Could not extract CV text for %s: %s", telegram_id, exc)
+        storage.set_cv_text(telegram_id, None)
+        await _reply_with_next_step(
+            update,
+            telegram_id,
+            f"CV сохранил: {filename}\n\n"
+            "Не удалось прочитать текст из файла (для смыслового "
+            "сравнения с вакансиями) — попробуйте пересохранить его как "
+            "обычный PDF или .docx.",
+        )
+        return
+
     await _reply_with_next_step(update, telegram_id, f"CV сохранил: {filename}")
 
 
@@ -250,19 +269,49 @@ async def cv_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _reply_with_next_step(update, telegram_id, message)
 
 
-def format_vacancy(index: int, v, match) -> str:
+def format_vacancy(index: int, v, percent: int, detail: str) -> str:
     parts = [f"{index}. {v.title}"]
     meta = " | ".join(p for p in [v.company, v.location, v.source] if p)
     if meta:
         parts.append(meta)
-    if match.matched_keywords:
-        parts.append(
-            f"Совпадение: {match.percent}% (по словам: {', '.join(match.matched_keywords)})"
-        )
-    else:
-        parts.append(f"Совпадение: {match.percent}%")
+    parts.append(f"Совпадение: {percent}%" + (f" — {detail}" if detail else ""))
     parts.append(v.url)
     return "\n".join(parts)
+
+
+# How many vacancies get sent to Gemini for real scoring per search. Bounds
+# cost/latency/free-tier rate limits; the final list shown to the user is
+# capped further (MAX_RESULTS below) once these are sorted.
+SEMANTIC_BATCH_CAP = 30
+
+
+def _score_vacancies(telegram_id: int, vacancies: list, keywords: list[str]):
+    """Returns [(vacancy, percent, detail_string), ...].
+
+    Prefers real semantic scoring via Gemini (bot/semantic_matching.py) when
+    it's configured and the user has a parsed CV; falls back to plain
+    keyword-overlap matching (bot/matching.py) otherwise.
+    """
+    cv_text = storage.get_cv_text(telegram_id) if semantic_matching_configured() else None
+
+    if cv_text:
+        candidates = vacancies[:SEMANTIC_BATCH_CAP]
+        try:
+            results = semantic_match_batch(cv_text, candidates)
+            return [
+                (v, r.percent, r.reasoning) for v, r in zip(candidates, results)
+            ]
+        except Exception:
+            logger.exception(
+                "Semantic matching failed for %s, falling back to keyword match",
+                telegram_id,
+            )
+
+    scored = [(v, compute_match(v, keywords)) for v in vacancies]
+    return [
+        (v, m.percent, ("по словам: " + ", ".join(m.matched_keywords) if m.matched_keywords else ""))
+        for v, m in scored
+    ]
 
 
 async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -300,8 +349,8 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    scored = [(v, compute_match(v, keywords)) for v in new_vacancies]
-    scored.sort(key=lambda pair: pair[1].percent, reverse=True)
+    scored = _score_vacancies(telegram_id, new_vacancies, keywords)
+    scored.sort(key=lambda triple: triple[1], reverse=True)
 
     MAX_RESULTS = 20
     to_send = scored[:MAX_RESULTS]
@@ -310,14 +359,14 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i in range(0, len(to_send), 5):
         chunk = to_send[i : i + 5]
         text = "\n\n".join(
-            format_vacancy(i + j + 1, v, match)
-            for j, (v, match) in enumerate(chunk)
+            format_vacancy(i + j + 1, v, percent, detail)
+            for j, (v, percent, detail) in enumerate(chunk)
         )
         # If this raises after retries, mark_seen below still records
         # whatever went out in earlier chunks, so a retried /search
         # doesn't re-send vacancies the person already saw.
         await send_with_retry(update, text, disable_web_page_preview=True)
-        sent_urls.extend(v.url for v, match in chunk if v.url)
+        sent_urls.extend(v.url for v, percent, detail in chunk if v.url)
 
     storage.mark_seen(telegram_id, sent_urls)
 

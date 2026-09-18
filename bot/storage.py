@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     telegram_id INTEGER PRIMARY KEY,
     keywords TEXT DEFAULT '',
     cv_path TEXT DEFAULT NULL,
+    cv_text TEXT DEFAULT NULL,
     location TEXT DEFAULT ''
 );
 
@@ -33,6 +34,12 @@ def get_conn():
 def init_db():
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        # Lightweight migration for DBs created before cv_text existed
+        # (e.g. an already-deployed Railway instance) -- CREATE TABLE IF
+        # NOT EXISTS above won't add columns to an existing table.
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
+        if "cv_text" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN cv_text TEXT DEFAULT NULL")
 
 
 def get_user(telegram_id: int):
@@ -73,6 +80,20 @@ def set_cv_path(telegram_id: int, cv_path: str):
             "UPDATE users SET cv_path = ? WHERE telegram_id = ?",
             (cv_path, telegram_id),
         )
+
+
+def set_cv_text(telegram_id: int, cv_text: str):
+    ensure_user(telegram_id)
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET cv_text = ? WHERE telegram_id = ?",
+            (cv_text, telegram_id),
+        )
+
+
+def get_cv_text(telegram_id: int) -> str | None:
+    user = get_user(telegram_id)
+    return (user or {}).get("cv_text") or None
 
 
 def set_location(telegram_id: int, location: str):
