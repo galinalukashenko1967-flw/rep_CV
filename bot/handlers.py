@@ -13,6 +13,7 @@ BTN_SEARCH = "🔍 Искать вакансии"
 BTN_KEYWORDS = "🔑 Ключевые слова"
 BTN_LOCATION = "📍 Город"
 BTN_CV = "📄 Моё CV"
+BTN_CANCEL = "❌ Отмена"
 
 # Required before the Search button appears at all.
 REQUIRED_FOR_SEARCH = (BTN_KEYWORDS, BTN_CV)
@@ -30,6 +31,12 @@ def build_keyboard(telegram_id: int) -> ReplyKeyboardMarkup:
     if _is_ready_for_search(telegram_id):
         rows.insert(0, [BTN_SEARCH])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+
+# Shown instead of the main menu while the bot is waiting for a specific
+# free-text reply (keywords / city), so there's always an obvious way out
+# if the person changes their mind instead of typing anything.
+CANCEL_KEYBOARD = ReplyKeyboardMarkup([[BTN_CANCEL]], resize_keyboard=True)
 
 
 def _missing_requirements(telegram_id: int) -> list[str]:
@@ -87,16 +94,18 @@ async def _prompt_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     current = storage.get_keywords(telegram_id)
     if current:
-        await update.message.reply_text(
+        message = (
             "Текущие ключевые слова: "
             + ", ".join(current)
-            + "\n\nЧтобы изменить — просто пришлите новые через запятую."
+            + "\n\nЧтобы изменить — пришлите новые через запятую, или нажмите Отмена."
         )
     else:
-        await update.message.reply_text(
+        message = (
             "Пришлите ключевые слова через запятую, например:\n"
-            "продавец, маркетинг, бухгалтер"
+            "продавец, маркетинг, бухгалтер\n\n"
+            "Или нажмите Отмена, если передумали."
         )
+    await update.message.reply_text(message, reply_markup=CANCEL_KEYBOARD)
     context.user_data["awaiting"] = "keywords"
 
 
@@ -124,15 +133,18 @@ async def _prompt_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = storage.get_user(telegram_id)
     current = (user or {}).get("location") or ""
     if current:
-        await update.message.reply_text(
+        message = (
             f"Сейчас фильтр по городу: {current}\n\n"
-            "Пришлите новое название города, или слово 'нет', чтобы искать по всей Дании."
+            "Пришлите новое название города, слово 'нет' (искать по всей Дании), "
+            "или нажмите Отмена, чтобы оставить как есть."
         )
     else:
-        await update.message.reply_text(
-            "Пришлите название города, например: Aarhus\n"
-            "(или ничего не присылайте — буду искать по всей Дании)"
+        message = (
+            "Пришлите название города, например: Aarhus\n\n"
+            "Или нажмите Отмена, если не хотите ограничивать город "
+            "(тогда буду искать по всей Дании)."
         )
+    await update.message.reply_text(message, reply_markup=CANCEL_KEYBOARD)
     context.user_data["awaiting"] = "location"
 
 
@@ -151,6 +163,12 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         return
 
+    if text == BTN_CANCEL:
+        context.user_data.pop("awaiting", None)
+        await update.message.reply_text(
+            "Хорошо, отменил.", reply_markup=build_keyboard(telegram_id)
+        )
+        return
     if text == BTN_SEARCH:
         await run_search(update, context)
         return
