@@ -26,11 +26,6 @@ from bot.semantic_matching import semantic_match_batch
 
 logger = logging.getLogger(__name__)
 
-# Last search results per user, so "/apply 3" can look up which vacancy
-# that refers to without re-running the search. In-memory only: lost on
-# restart, but a fresh /search is cheap, so that's an acceptable trade-off
-# for not needing another DB table just for this.
-LAST_RESULTS: dict[int, list] = {}
 
 
 async def send_with_retry(update: Update, text: str, retries: int = 2, **kwargs):
@@ -254,7 +249,7 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # LAST_RESULTS is empty (e.g. the bot restarted and lost its in-memory
     # cache since the last /search), say so explicitly instead of guessing.
     if text.isdigit() and awaiting is None:
-        if LAST_RESULTS.get(telegram_id):
+        if storage.get_last_results(telegram_id):
             await _apply_to_vacancy_core(update, context, int(text))
         else:
             await update.message.reply_text(
@@ -417,7 +412,7 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     MAX_RESULTS = 20
     to_send = scored[:MAX_RESULTS]
-    LAST_RESULTS[telegram_id] = to_send
+    storage.set_last_results(telegram_id, to_send)
 
     sent_urls = await _send_results_chunks(update, to_send)
     storage.mark_seen(telegram_id, sent_urls)
@@ -449,7 +444,7 @@ async def _send_results_chunks(update: Update, to_send: list) -> list[str]:
 
 
 def _apply_keyboard(telegram_id: int, index: int):
-    results = LAST_RESULTS.get(telegram_id) or []
+    results = storage.get_last_results(telegram_id)
     row = []
     if index < len(results):
         row.append(
@@ -468,7 +463,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
     telegram_id = update.effective_user.id
     message = update.effective_message
 
-    results = LAST_RESULTS.get(telegram_id) or []
+    results = storage.get_last_results(telegram_id)
     if not results:
         await message.reply_text("Сначала запустите поиск — нажмите 🔍 Искать вакансии.")
         return
@@ -545,7 +540,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "relist":
-        results = LAST_RESULTS.get(telegram_id) or []
+        results = storage.get_last_results(telegram_id)
         if not results:
             await update.effective_message.reply_text(
                 "Список пуст — нажмите 🔍 Искать вакансии.",

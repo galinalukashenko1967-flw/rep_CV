@@ -1,7 +1,10 @@
+import json
 import sqlite3
 from contextlib import contextmanager
+from dataclasses import asdict
 
 from bot.config import DB_PATH
+from bot.sources import Vacancy
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -9,7 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
     keywords TEXT DEFAULT '',
     cv_path TEXT DEFAULT NULL,
     cv_text TEXT DEFAULT NULL,
-    location TEXT DEFAULT ''
+    location TEXT DEFAULT '',
+    last_results TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS seen_vacancies (
@@ -40,6 +44,8 @@ def init_db():
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
         if "cv_text" not in columns:
             conn.execute("ALTER TABLE users ADD COLUMN cv_text TEXT DEFAULT NULL")
+        if "last_results" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN last_results TEXT DEFAULT NULL")
 
 
 def get_user(telegram_id: int):
@@ -122,6 +128,34 @@ def clear_seen(telegram_id: int) -> int:
             "DELETE FROM seen_vacancies WHERE telegram_id = ?", (telegram_id,)
         )
         return cursor.rowcount
+
+
+def set_last_results(telegram_id: int, scored: list[tuple[Vacancy, int, str]]):
+    """Persists the last /search results (vacancy, percent, reasoning) so
+    "type a number" / "next vacancy" keeps working across bot restarts --
+    an in-memory-only cache used to silently lose this on every redeploy,
+    which made a bare "1" fall through to overwriting keywords instead."""
+    ensure_user(telegram_id)
+    payload = json.dumps(
+        [[asdict(v), percent, detail] for v, percent, detail in scored]
+    )
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET last_results = ? WHERE telegram_id = ?",
+            (payload, telegram_id),
+        )
+
+
+def get_last_results(telegram_id: int) -> list[tuple[Vacancy, int, str]]:
+    user = get_user(telegram_id)
+    raw = (user or {}).get("last_results")
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        return [(Vacancy(**v), percent, detail) for v, percent, detail in data]
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return []
 
 
 def filter_unseen(telegram_id: int, urls: list[str]) -> set[str]:
