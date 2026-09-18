@@ -414,6 +414,15 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     to_send = scored[:MAX_RESULTS]
     storage.set_last_results(telegram_id, to_send)
 
+    # Said again at the end of the full list too, but that's easy to miss
+    # if the person doesn't scroll past a long list -- show it right above
+    # vacancy #1 as well, where they're actually looking.
+    await send_with_retry(
+        update,
+        f"Нашёл {len(to_send)}. Чтобы получить ansøgning под вакансию — "
+        "пришлите её номер (например: 1).",
+    )
+
     sent_urls = await _send_results_chunks(update, to_send)
     storage.mark_seen(telegram_id, sent_urls)
 
@@ -556,8 +565,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=build_keyboard(telegram_id),
             )
             return
+        await update.effective_message.reply_text(
+            f"Список из {len(results)}. Чтобы получить ansøgning под вакансию — "
+            "пришлите её номер (например: 1)."
+        )
         await _send_results_chunks(update, results)
         await update.effective_message.reply_text(
-            "Чтобы получить ansøgning под вакансию — просто пришлите её номер (например: 3).",
+            "Это весь список выше.",
             reply_markup=build_keyboard(telegram_id),
         )
