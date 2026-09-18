@@ -99,7 +99,7 @@ def _missing_requirements(telegram_id: int) -> list[str]:
 
 
 WELCOME = (
-    "Привіт! Я шукаю вакансії на Jobindex.dk, Jobnet.dk та IT-jobbank.dk "
+    "Привіт! Я шукаю вакансії на Jobindex.dk, Jobnet.dk та LinkedIn "
     "за вашими ключовими словами.\n\n"
     "Користуйтеся кнопками внизу екрана:\n"
     f"{BTN_KEYWORDS} — задати свої ключові слова через кому\n"
