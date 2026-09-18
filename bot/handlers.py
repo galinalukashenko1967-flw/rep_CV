@@ -1,5 +1,8 @@
 import asyncio
 import logging
+import re
+import tempfile
+from pathlib import Path
 
 from telegram import Document, ReplyKeyboardMarkup, Update
 from telegram.error import NetworkError, TimedOut
@@ -9,6 +12,7 @@ from bot import cv_parser, storage
 from bot.config import UPLOADS_DIR
 from bot.letter_generation import generate_cover_letter
 from bot.matching import compute_match
+from bot.pdf_export import vacancy_to_pdf
 from bot.search import search_all
 from bot.semantic_matching import is_configured as semantic_matching_configured
 from bot.semantic_matching import semantic_match_batch
@@ -465,5 +469,23 @@ async def apply_to_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_with_retry(
         update,
         f"{vacancy.title} — {vacancy.company}\n{vacancy.url}\n\n{letter}",
-        reply_markup=build_keyboard(telegram_id),
     )
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        pdf_path = Path(tmp_dir) / "vacancy.pdf"
+        try:
+            vacancy_to_pdf(vacancy, str(pdf_path))
+            with open(pdf_path, "rb") as f:
+                safe_name = re.sub(r"[^\w\-]+", "_", vacancy.title)[:60] or "vacancy"
+                await update.message.reply_document(
+                    document=f,
+                    filename=f"{safe_name}.pdf",
+                    caption="Вакансия в PDF — для лога/отчётности.",
+                    reply_markup=build_keyboard(telegram_id),
+                )
+        except Exception:
+            logger.exception("PDF export failed for %s / %s", telegram_id, vacancy.url)
+            await update.message.reply_text(
+                "Письмо готово, но не получилось сделать PDF с вакансией — попробуйте /apply ещё раз.",
+                reply_markup=build_keyboard(telegram_id),
+            )
