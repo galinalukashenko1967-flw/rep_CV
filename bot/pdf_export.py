@@ -21,12 +21,33 @@ def _strip_html(text: str) -> str:
     return text.strip()
 
 
-def vacancy_to_pdf(vacancy, output_path: str):
+def vacancy_to_pdf(vacancy, output_path: str, contact=None):
     pdf = FPDF()
     pdf.add_font("DejaVu", "", str(REGULAR_FONT))
     pdf.add_font("DejaVu", "B", str(BOLD_FONT))
     pdf.add_page()
     pdf.set_margins(20, 20, 20)
+
+    if contact is not None:
+        pdf.set_fill_color(240, 240, 240)
+        pdf.set_font("DejaVu", "B", 12)
+        pdf.multi_cell(0, 7, "Для лога / отчётности — сводка", fill=True)
+        pdf.set_font("DejaVu", "", 11)
+        summary_lines = [
+            ("Вакансия", vacancy.title),
+            ("Компания", vacancy.company),
+            ("Контактное лицо", contact.name),
+            ("Телефон", contact.phone),
+            ("Email", contact.email),
+            ("Ссылка", vacancy.url),
+        ]
+        for label, value in summary_lines:
+            pdf.set_font("DejaVu", "B", 11)
+            pdf.write(6, f"{label}: ")
+            pdf.set_font("DejaVu", "", 11)
+            pdf.write(6, value or "")
+            pdf.ln(7)
+        pdf.ln(6)
 
     pdf.set_font("DejaVu", "B", 14)
     pdf.multi_cell(0, 8, vacancy.title)

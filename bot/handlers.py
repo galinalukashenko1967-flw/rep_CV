@@ -10,6 +10,7 @@ from telegram.ext import ContextTypes
 
 from bot import cv_parser, storage
 from bot.config import UPLOADS_DIR
+from bot.contact_extraction import extract_contact_info
 from bot.letter_generation import generate_cover_letter
 from bot.matching import compute_match
 from bot.pdf_export import vacancy_to_pdf
@@ -471,16 +472,18 @@ async def apply_to_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{vacancy.title} — {vacancy.company}\n{vacancy.url}\n\n{letter}",
     )
 
+    contact = extract_contact_info(vacancy)
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         pdf_path = Path(tmp_dir) / "vacancy.pdf"
         try:
-            vacancy_to_pdf(vacancy, str(pdf_path))
+            vacancy_to_pdf(vacancy, str(pdf_path), contact=contact)
             with open(pdf_path, "rb") as f:
                 safe_name = re.sub(r"[^\w\-]+", "_", vacancy.title)[:60] or "vacancy"
                 await update.message.reply_document(
                     document=f,
                     filename=f"{safe_name}.pdf",
-                    caption="Вакансия в PDF — для лога/отчётности.",
+                    caption="Вакансия в PDF — сверху сводка для лога (контакт, телефон, email, ссылка).",
                     reply_markup=build_keyboard(telegram_id),
                 )
         except Exception:
