@@ -248,6 +248,14 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _save_location(update, telegram_id, text)
         return
 
+    # A bare number (no /apply, no other pending state) almost always means
+    # "pick vacancy N from the list I just showed you" -- treating it as a
+    # keywords update instead used to silently overwrite real keywords with
+    # "1", which is a much worse outcome than a wrong guess here.
+    if text.isdigit() and awaiting is None and LAST_RESULTS.get(telegram_id):
+        await _apply_to_vacancy_core(update, context, int(text))
+        return
+
     # Default: any other free-text message (including the first message
     # after tapping "Ключевые слова") is treated as a keywords update.
     await _save_keywords(update, telegram_id, text)
@@ -410,7 +418,7 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(new_vacancies) > MAX_RESULTS
         else "Это все новые вакансии на сейчас."
     )
-    footer += "\n\nЧтобы получить ansøgning под конкретную вакансию — напишите: /apply <номер>"
+    footer += "\n\nЧтобы получить ansøgning под вакансию — просто пришлите её номер (например: 3)"
     await send_with_retry(update, footer, reply_markup=build_keyboard(telegram_id))
 
 
@@ -536,6 +544,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         await _send_results_chunks(update, results)
         await update.effective_message.reply_text(
-            "Чтобы получить ansøgning под вакансию — напишите: /apply <номер>",
+            "Чтобы получить ansøgning под вакансию — просто пришлите её номер (например: 3).",
             reply_markup=build_keyboard(telegram_id),
         )
