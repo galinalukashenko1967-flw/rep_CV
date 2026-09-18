@@ -23,6 +23,9 @@ def main():
     app.add_handler(CommandHandler("cv", handlers.cv_status))
     app.add_handler(CommandHandler("search", handlers.run_search))
     app.add_handler(MessageHandler(filters.Document.ALL, handlers.handle_cv_upload))
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_plain_text)
+    )
 
     logging.info("Bot starting (polling)...")
     app.run_polling()

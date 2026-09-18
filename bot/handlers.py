@@ -13,7 +13,7 @@ WELCOME = (
     "Привет! Я ищу вакансии на Jobindex.dk, Jobnet.dk и IT-jobbank.dk "
     "по вашим ключевым словам.\n\n"
     "Как начать:\n"
-    "1. /keywords SQL, reporting, data quality — ваши ключевые слова через запятую\n"
+    "1. /keywords продавец, маркетинг, бухгалтер — ваши ключевые слова через запятую\n"
     "2. Пришлите файл вашего CV (PDF или Word) — просто отправьте документ в чат\n"
     "3. /location Aarhus — необязательно, чтобы отфильтровать по городу\n"
     "4. /search — запустить поиск\n\n"
@@ -30,6 +30,14 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(WELCOME)
 
 
+async def _save_keywords(update: Update, telegram_id: int, text: str):
+    keywords = [k.strip() for k in text.split(",") if k.strip()]
+    storage.set_keywords(telegram_id, keywords)
+    await update.message.reply_text(
+        "Сохранил ключевые слова: " + ", ".join(keywords)
+    )
+
+
 async def set_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     text = " ".join(context.args) if context.args else ""
@@ -42,15 +50,22 @@ async def set_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(
                 "Пришлите ключевые слова через запятую, например:\n"
-                "/keywords SQL, reporting, data quality"
+                "/keywords продавец, маркетинг, бухгалтер"
             )
         return
 
-    keywords = [k.strip() for k in text.split(",") if k.strip()]
-    storage.set_keywords(telegram_id, keywords)
-    await update.message.reply_text(
-        "Сохранил ключевые слова: " + ", ".join(keywords)
-    )
+    await _save_keywords(update, telegram_id, text)
+
+
+async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Free-text messages (no leading "/command") are treated as a
+    # keywords update - this is how most people will naturally reply
+    # after the bot asks them to send comma-separated keywords.
+    telegram_id = update.effective_user.id
+    text = (update.message.text or "").strip()
+    if not text:
+        return
+    await _save_keywords(update, telegram_id, text)
 
 
 async def set_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
