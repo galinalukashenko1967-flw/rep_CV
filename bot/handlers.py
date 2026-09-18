@@ -314,11 +314,12 @@ async def cv_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def reset_seen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     count = storage.clear_seen(telegram_id)
-    await update.message.reply_text(
-        f"Готово, забыл {count} уже показанных вакансий — "
-        "следующий поиск покажет их снова.",
-        reply_markup=build_keyboard(telegram_id),
-    )
+    if count:
+        await update.message.reply_text(f"Забыл {count} уже показанных вакансий, ищу заново...")
+    # The button says "show again" -- so show them again immediately,
+    # rather than just clearing a flag and leaving the person to guess
+    # that they now need to separately press Search.
+    await run_search(update, context)
 
 
 def format_vacancy(index: int, v, percent: int, detail: str) -> str:
