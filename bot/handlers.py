@@ -47,13 +47,13 @@ async def send_with_retry(update: Update, text: str, retries: int = 2, **kwargs)
                 await asyncio.sleep(2 * (attempt + 1))
     raise last_error
 
-BTN_SEARCH = "🔍 Искать вакансии"
-BTN_KEYWORDS = "🔑 Ключевые слова"
-BTN_LOCATION = "📍 Город"
-BTN_CV = "📄 Моё CV"
-BTN_CANCEL = "❌ Отмена"
-BTN_ALL_DENMARK = "🌍 Вся Дания"
-BTN_RESET_SEEN = "🔄 Показать вакансии заново"
+BTN_SEARCH = "🔍 ШУКАТИ ВАКАНСІЇ"
+BTN_KEYWORDS = "🔑 Ключові слова"
+BTN_LOCATION = "📍 Місто"
+BTN_CV = "📄 Моє CV"
+BTN_CANCEL = "❌ Скасувати"
+BTN_ALL_DENMARK = "🌍 Уся Данія"
+BTN_RESET_SEEN = "🔄 Показати вакансії знову"
 
 # Required before the Search button appears at all.
 REQUIRED_FOR_SEARCH = (BTN_KEYWORDS, BTN_CV)
@@ -97,13 +97,13 @@ def _missing_requirements(telegram_id: int) -> list[str]:
 
 
 WELCOME = (
-    "Привет! Я ищу вакансии на Jobindex.dk, Jobnet.dk и IT-jobbank.dk "
-    "по вашим ключевым словам.\n\n"
-    "Пользуйтесь кнопками внизу экрана:\n"
-    f"{BTN_KEYWORDS} — задать свои ключевые слова через запятую\n"
-    f"{BTN_LOCATION} — необязательно, отфильтровать по городу\n"
-    f"{BTN_CV} — загрузить/проверить своё CV (PDF или Word — просто отправьте файл)\n\n"
-    f"Кнопка {BTN_SEARCH} появится, когда заполните ключевые слова и CV."
+    "Привіт! Я шукаю вакансії на Jobindex.dk, Jobnet.dk та IT-jobbank.dk "
+    "за вашими ключовими словами.\n\n"
+    "Користуйтеся кнопками внизу екрана:\n"
+    f"{BTN_KEYWORDS} — задати свої ключові слова через кому\n"
+    f"{BTN_LOCATION} — необов'язково, відфільтрувати за містом\n"
+    f"{BTN_CV} — завантажити/перевірити своє CV (PDF або Word — просто надішліть файл)\n\n"
+    f"Кнопка {BTN_SEARCH} з'явиться, коли заповните ключові слова та CV."
 )
 
 
@@ -123,7 +123,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _reply_with_next_step(update: Update, telegram_id: int, done_message: str):
     missing = _missing_requirements(telegram_id)
     if missing:
-        done_message += "\n\nОсталось заполнить: " + ", ".join(missing)
+        done_message += "\n\nЗалишилось заповнити: " + ", ".join(missing)
     await update.message.reply_text(
         done_message, reply_markup=build_keyboard(telegram_id)
     )
@@ -133,7 +133,7 @@ async def _save_keywords(update: Update, telegram_id: int, text: str):
     keywords = [k.strip() for k in text.split(",") if k.strip()]
     storage.set_keywords(telegram_id, keywords)
     await _reply_with_next_step(
-        update, telegram_id, "Сохранил ключевые слова: " + ", ".join(keywords)
+        update, telegram_id, "Зберіг ключові слова: " + ", ".join(keywords)
     )
 
 
@@ -142,15 +142,15 @@ async def _prompt_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current = storage.get_keywords(telegram_id)
     if current:
         message = (
-            "Текущие ключевые слова: "
+            "Поточні ключові слова: "
             + ", ".join(current)
-            + "\n\nЧтобы изменить — пришлите новые через запятую, или нажмите Отмена."
+            + "\n\nЩоб змінити — надішліть нові через кому, або натисніть Скасувати."
         )
     else:
         message = (
-            "Пришлите ключевые слова через запятую, например:\n"
-            "продавец, маркетинг, бухгалтер\n\n"
-            "Или нажмите Отмена, если передумали."
+            "Надішліть ключові слова через кому, наприклад:\n"
+            "продавець, маркетинг, бухгалтер\n\n"
+            "Або натисніть Скасувати, якщо передумали."
         )
     await update.message.reply_text(message, reply_markup=CANCEL_KEYBOARD)
     context.user_data["awaiting"] = "keywords"
@@ -168,9 +168,9 @@ async def set_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _save_location(update: Update, telegram_id: int, text: str):
     storage.set_location(telegram_id, text)
     message = (
-        f"Буду фильтровать по городу: {text}"
+        f"Шукатиму за містом: {text}"
         if text
-        else "Фильтр по городу снят — ищу по всей Дании."
+        else "Фільтр за містом знято — шукаю по всій Данії."
     )
     await _reply_with_next_step(update, telegram_id, message)
 
@@ -181,15 +181,15 @@ async def _prompt_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current = (user or {}).get("location") or ""
     if current:
         message = (
-            f"Сейчас фильтр по городу: {current}\n\n"
-            f"Пришлите новое название города, нажмите «{BTN_ALL_DENMARK}» "
-            "(снять фильтр совсем), или «Отмена», чтобы оставить как есть."
+            f"Зараз фільтр за містом: {current}\n\n"
+            f"Надішліть нову назву міста, натисніть «{BTN_ALL_DENMARK}» "
+            "(зняти фільтр зовсім), або «Скасувати», щоб залишити як є."
         )
     else:
         message = (
-            "Пришлите название города, например: Aarhus\n\n"
-            f"Уже и так ищу по всей Дании — «{BTN_ALL_DENMARK}» и «Отмена» "
-            "здесь делают то же самое."
+            "Надішліть назву міста, наприклад: Aarhus\n\n"
+            f"Я і так вже шукаю по всій Данії — «{BTN_ALL_DENMARK}» і «Скасувати» "
+            "тут роблять те саме."
         )
     await update.message.reply_text(message, reply_markup=LOCATION_KEYBOARD)
     context.user_data["awaiting"] = "location"
@@ -213,7 +213,7 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == BTN_CANCEL:
         context.user_data.pop("awaiting", None)
         await update.message.reply_text(
-            "Хорошо, отменил.", reply_markup=build_keyboard(telegram_id)
+            "Добре, скасував.", reply_markup=build_keyboard(telegram_id)
         )
         return
     if text == BTN_ALL_DENMARK:
@@ -238,7 +238,7 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     awaiting = context.user_data.pop("awaiting", None)
     if awaiting == "location":
-        if text.lower() in ("нет", "no", "-"):
+        if text.lower() in ("нет", "ні", "no", "-"):
             text = ""
         await _save_location(update, telegram_id, text)
         return
@@ -253,15 +253,15 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _apply_to_vacancy_core(update, context, int(text))
         else:
             await update.message.reply_text(
-                "Не вижу список вакансий (возможно, бот перезапускался) — "
-                "нажмите 🔍 Искать вакансии ещё раз, потом можно будет "
-                "присылать номер вакансии.",
+                "Не бачу список вакансій (можливо, бот перезапускався) — "
+                f"натисніть {BTN_SEARCH} ще раз, потім можна буде "
+                "надсилати номер вакансії.",
                 reply_markup=build_keyboard(telegram_id),
             )
         return
 
     # Default: any other free-text message (including the first message
-    # after tapping "Ключевые слова") is treated as a keywords update.
+    # after tapping "Ключові слова") is treated as a keywords update.
     await _save_keywords(update, telegram_id, text)
 
 
@@ -273,7 +273,7 @@ async def handle_cv_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filename = document.file_name or "cv"
     if not filename.lower().endswith(allowed_ext):
         await update.message.reply_text(
-            "Пришлите CV в формате PDF или Word (.pdf, .doc, .docx)."
+            "Надішліть CV у форматі PDF або Word (.pdf, .doc, .docx)."
         )
         return
 
@@ -295,23 +295,23 @@ async def handle_cv_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _reply_with_next_step(
             update,
             telegram_id,
-            f"CV сохранил: {filename}\n\n"
-            "Не удалось прочитать текст из файла (для смыслового "
-            "сравнения с вакансиями) — попробуйте пересохранить его как "
-            "обычный PDF или .docx.",
+            f"CV зберіг: {filename}\n\n"
+            "Не вдалося прочитати текст з файлу (для смислового "
+            "порівняння з вакансіями) — спробуйте перезберегти його як "
+            "звичайний PDF або .docx.",
         )
         return
 
-    await _reply_with_next_step(update, telegram_id, f"CV сохранил: {filename}")
+    await _reply_with_next_step(update, telegram_id, f"CV зберіг: {filename}")
 
 
 async def cv_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     user = storage.get_user(telegram_id)
     if user and user.get("cv_path"):
-        message = f"Загруженное CV: {user['cv_path'].split('/')[-1]}"
+        message = f"Завантажене CV: {user['cv_path'].split('/')[-1]}"
     else:
-        message = "CV ещё не загружено — пришлите файл документом (PDF или Word)."
+        message = "CV ще не завантажено — надішліть файл документом (PDF або Word)."
     await _reply_with_next_step(update, telegram_id, message)
 
 
@@ -319,7 +319,7 @@ async def reset_seen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     count = storage.clear_seen(telegram_id)
     if count:
-        await update.message.reply_text(f"Забыл {count} уже показанных вакансий, ищу заново...")
+        await update.message.reply_text(f"Забув {count} вже показаних вакансій, шукаю знову...")
     # The button says "show again" -- so show them again immediately,
     # rather than just clearing a flag and leaving the person to guess
     # that they now need to separately press Search.
@@ -331,7 +331,7 @@ def format_vacancy(index: int, v, percent: int, detail: str) -> str:
     meta = " | ".join(p for p in [v.company, v.location, v.source] if p)
     if meta:
         parts.append(meta)
-    parts.append(f"Совпадение: {percent}%" + (f" — {detail}" if detail else ""))
+    parts.append(f"Збіг: {percent}%" + (f" — {detail}" if detail else ""))
     parts.append(v.url)
     return "\n".join(parts)
 
@@ -366,9 +366,17 @@ def _score_vacancies(telegram_id: int, vacancies: list, keywords: list[str]):
 
     scored = [(v, compute_match(v, keywords)) for v in vacancies]
     return [
-        (v, m.percent, ("по словам: " + ", ".join(m.matched_keywords) if m.matched_keywords else ""))
+        (v, m.percent, ("за словами: " + ", ".join(m.matched_keywords) if m.matched_keywords else ""))
         for v, m in scored
     ]
+
+
+# The "type a number to apply" hint is easy to miss as plain text buried in
+# a longer message, and Telegram buttons can't be bold -- but message text
+# can, via HTML parse mode. Kept as one constant so the wording/formatting
+# stays identical everywhere it's shown (before the list, after it, and on
+# "Показати список знову").
+NUMBER_HINT_HTML = "<b>Щоб отримати ansøgning під вакансію — надішліть її номер</b> (наприклад: 1)."
 
 
 async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -376,7 +384,7 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     missing = _missing_requirements(telegram_id)
     if missing:
         await update.message.reply_text(
-            "Сначала заполните: " + ", ".join(missing),
+            "Спочатку заповніть: " + ", ".join(missing),
             reply_markup=build_keyboard(telegram_id),
         )
         return
@@ -387,8 +395,8 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await send_with_retry(
         update,
-        f"Ищу по словам: {', '.join(keywords)}"
-        + (f" в {location}" if location else " по всей Дании")
+        f"Шукаю за словами: {', '.join(keywords)}"
+        + (f" у {location}" if location else " по всій Данії")
         + " ...",
     )
 
@@ -401,8 +409,8 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not new_vacancies:
         await send_with_retry(
             update,
-            "Новых вакансий не нашлось (или все уже присылал раньше). "
-            f"Если хотите увидеть их снова — нажмите «{BTN_RESET_SEEN}».",
+            "Нових вакансій не знайшлося (або всі вже надсилав раніше). "
+            f"Якщо хочете побачити їх знову — натисніть «{BTN_RESET_SEEN}».",
             reply_markup=build_keyboard(telegram_id),
         )
         return
@@ -419,21 +427,23 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # vacancy #1 as well, where they're actually looking.
     await send_with_retry(
         update,
-        f"Нашёл {len(to_send)}. Чтобы получить ansøgning под вакансию — "
-        "пришлите её номер (например: 1).",
+        f"Знайшов {len(to_send)}. {NUMBER_HINT_HTML}",
+        parse_mode="HTML",
     )
 
     sent_urls = await _send_results_chunks(update, to_send)
     storage.mark_seen(telegram_id, sent_urls)
 
     footer = (
-        f"...и ещё {len(new_vacancies) - MAX_RESULTS}. "
-        f"Уточните ключевые слова или город, чтобы сузить список."
+        f"...і ще {len(new_vacancies) - MAX_RESULTS}. "
+        f"Уточніть ключові слова або місто, щоб звузити список."
         if len(new_vacancies) > MAX_RESULTS
-        else "Это все новые вакансии на сейчас."
+        else "Це всі нові вакансії на зараз."
     )
-    footer += "\n\nЧтобы получить ansøgning под вакансию — просто пришлите её номер (например: 3)"
-    await send_with_retry(update, footer, reply_markup=build_keyboard(telegram_id))
+    footer += "\n\n" + NUMBER_HINT_HTML
+    await send_with_retry(
+        update, footer, reply_markup=build_keyboard(telegram_id), parse_mode="HTML"
+    )
 
 
 async def _send_results_chunks(update: Update, to_send: list) -> list[str]:
@@ -458,12 +468,12 @@ def _apply_keyboard(telegram_id: int, index: int):
     if index < len(results):
         row.append(
             InlineKeyboardButton(
-                f"➡️ Следующая (№{index + 1})", callback_data=f"apply:{index + 1}"
+                f"➡️ Наступна (№{index + 1})", callback_data=f"apply:{index + 1}"
             )
         )
     buttons = [row] if row else []
     buttons.append(
-        [InlineKeyboardButton("📋 Показать список снова", callback_data="relist")]
+        [InlineKeyboardButton("📋 Показати список знову", callback_data="relist")]
     )
     return InlineKeyboardMarkup(buttons)
 
@@ -474,19 +484,19 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
 
     results = storage.get_last_results(telegram_id)
     if not results:
-        await message.reply_text("Сначала запустите поиск — нажмите 🔍 Искать вакансии.")
+        await message.reply_text(f"Спочатку запустіть пошук — натисніть {BTN_SEARCH}.")
         return
     if not (1 <= index <= len(results)):
-        await message.reply_text(f"Нет вакансии №{index} — в последнем списке их {len(results)}.")
+        await message.reply_text(f"Немає вакансії №{index} — в останньому списку їх {len(results)}.")
         return
 
     cv_text = storage.get_cv_text(telegram_id)
     if not cv_text:
-        await message.reply_text("Не нашёл текст вашего CV — пришлите файл ещё раз через 📄 Моё CV.")
+        await message.reply_text(f"Не знайшов текст вашого CV — надішліть файл ще раз через {BTN_CV}.")
         return
 
     if not semantic_matching_configured():
-        await message.reply_text("Генерация писем сейчас недоступна (не настроен доступ к модели).")
+        await message.reply_text("Генерація листів зараз недоступна (не налаштовано доступ до моделі).")
         return
 
     vacancy, percent, detail = results[index - 1]
@@ -496,7 +506,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
         letter = generate_cover_letter(cv_text, vacancy)
     except Exception:
         logger.exception("Letter generation failed for %s / %s", telegram_id, vacancy.url)
-        await message.reply_text("Не получилось сгенерировать письмо (сбой на стороне модели). Попробуйте ещё раз.")
+        await message.reply_text("Не вдалося згенерувати лист (збій на боці моделі). Спробуйте ще раз.")
         return
 
     await send_with_retry(
@@ -515,7 +525,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
                 await message.reply_document(
                     document=f,
                     filename=f"ansogning_{safe_name}.pdf",
-                    caption="Ansøgning в PDF — можно сохранить и распечатать.",
+                    caption="Ansøgning у PDF — можна зберегти і роздрукувати.",
                 )
 
             vacancy_pdf_path = Path(tmp_dir) / "vacancy.pdf"
@@ -524,15 +534,15 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
                 await message.reply_document(
                     document=f,
                     filename=f"vakansiya_{safe_name}.pdf",
-                    caption="Вакансия в PDF — сверху сводка для лога (контакт, телефон, email, ссылка).",
+                    caption="Вакансія у PDF — зверху зведення для логу (контакт, телефон, email, посилання).",
                 )
         except Exception:
             logger.exception("PDF export failed for %s / %s", telegram_id, vacancy.url)
-            await message.reply_text("Письмо готово, но не получилось сделать PDF-файлы — попробуйте /apply ещё раз.")
+            await message.reply_text("Лист готовий, але не вдалося зробити PDF-файли — спробуйте /apply ще раз.")
             return
 
     await message.reply_text(
-        "Что дальше?",
+        "Що далі?",
         reply_markup=_apply_keyboard(telegram_id, index),
     )
 
@@ -540,7 +550,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
 async def apply_to_vacancy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args or not context.args[0].isdigit():
         await update.message.reply_text(
-            "Укажите номер вакансии из последнего списка, например: /apply 3"
+            "Вкажіть номер вакансії з останнього списку, наприклад: /apply 3"
         )
         return
     await _apply_to_vacancy_core(update, context, int(context.args[0]))
@@ -561,16 +571,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         results = storage.get_last_results(telegram_id)
         if not results:
             await update.effective_message.reply_text(
-                "Список пуст — нажмите 🔍 Искать вакансии.",
+                f"Список порожній — натисніть {BTN_SEARCH}.",
                 reply_markup=build_keyboard(telegram_id),
             )
             return
         await update.effective_message.reply_text(
-            f"Список из {len(results)}. Чтобы получить ansøgning под вакансию — "
-            "пришлите её номер (например: 1)."
+            f"Список з {len(results)}. {NUMBER_HINT_HTML}",
+            parse_mode="HTML",
         )
         await _send_results_chunks(update, results)
         await update.effective_message.reply_text(
-            "Это весь список выше.",
+            "Це весь список вище.",
             reply_markup=build_keyboard(telegram_id),
         )
