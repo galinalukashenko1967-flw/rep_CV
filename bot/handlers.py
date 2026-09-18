@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 import re
 import tempfile
@@ -372,13 +373,31 @@ async def reset_seen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await run_search(update, context)
 
 
-def format_vacancy(index: int, v, percent: int, detail: str) -> str:
-    parts = [f"{index}. {v.title}"]
-    meta = " | ".join(p for p in [v.company, v.location, v.source] if p)
+def _matched_keywords(v, keywords: list[str]) -> list[str]:
+    """Which of the person's own search keywords literally appear in this
+    vacancy's title/description -- shown as a dedicated line so it's clear
+    at a glance why it turned up, separate from the % match verdict
+    (which may be semantic/Gemini-based and not tied to exact words)."""
+    haystack = f"{v.title} {v.description}".lower()
+    return [k.strip() for k in keywords if k.strip() and k.strip().lower() in haystack]
+
+
+def format_vacancy(index: int, v, percent: int, detail: str, keywords: list[str]) -> str:
+    title = html.escape(v.title)
+    parts = [f"{index}. {title}"]
+    meta = " | ".join(html.escape(p) for p in [v.company, v.location, v.source] if p)
     if meta:
         parts.append(meta)
-    parts.append(f"Збіг: {percent}%" + (f" — {detail}" if detail else ""))
-    parts.append(v.url)
+
+    matched = _matched_keywords(v, keywords)
+    if matched:
+        parts.append("<b>Ключові слова:</b> " + html.escape(", ".join(matched)))
+
+    detail_escaped = html.escape(detail) if detail else ""
+    parts.append(f"Збіг: {percent}%" + (f" — {detail_escaped}" if detail_escaped else ""))
+    if v.url:
+        url_escaped = html.escape(v.url)
+        parts.append(f'<a href="{url_escaped}">{url_escaped}</a>')
     return "\n".join(parts)
 
 
@@ -477,7 +496,7 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
     )
 
-    sent_urls = await _send_results_chunks(update, to_send)
+    sent_urls = await _send_results_chunks(update, to_send, keywords)
     storage.mark_seen(telegram_id, sent_urls)
 
     footer = (
@@ -492,7 +511,9 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def _send_results_chunks(update: Update, to_send: list) -> list[str]:
+async def _send_results_chunks(
+    update: Update, to_send: list, keywords: list[str]
+) -> list[str]:
     """Sends the numbered vacancy list in chunks of 5. Returns the URLs
     that were actually sent, so the caller can mark them seen even if a
     later chunk fails partway through."""
@@ -500,10 +521,10 @@ async def _send_results_chunks(update: Update, to_send: list) -> list[str]:
     for i in range(0, len(to_send), 5):
         chunk = to_send[i : i + 5]
         text = "\n\n".join(
-            format_vacancy(i + j + 1, v, percent, detail)
+            format_vacancy(i + j + 1, v, percent, detail, keywords)
             for j, (v, percent, detail) in enumerate(chunk)
         )
-        await send_with_retry(update, text, disable_web_page_preview=True)
+        await send_with_retry(update, text, disable_web_page_preview=True, parse_mode="HTML")
         sent_urls.extend(v.url for v, percent, detail in chunk if v.url)
     return sent_urls
 
@@ -655,7 +676,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Список з {len(results)}. {NUMBER_HINT_HTML}",
             parse_mode="HTML",
         )
-        await _send_results_chunks(update, results)
+        await _send_results_chunks(update, results, storage.get_keywords(telegram_id))
         await update.effective_message.reply_text(
             "Це весь список вище.",
             reply_markup=build_keyboard(telegram_id),
