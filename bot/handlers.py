@@ -566,7 +566,7 @@ async def _apply_to_vacancy_core(update: Update, context: ContextTypes.DEFAULT_T
                 await message.reply_document(
                     document=f,
                     filename=f"vakansiya_UA_{safe_name}.txt",
-                    caption="Переклад вакансії українською — для перевірки, можна редагувати.",
+                    caption="Переклад вакансії українською — для перевірки, як є.",
                 )
         except Exception:
             logger.exception("Translation failed for %s / %s", telegram_id, vacancy.url)
