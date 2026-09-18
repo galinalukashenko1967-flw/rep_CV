@@ -249,11 +249,20 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # A bare number (no /apply, no other pending state) almost always means
-    # "pick vacancy N from the list I just showed you" -- treating it as a
-    # keywords update instead used to silently overwrite real keywords with
-    # "1", which is a much worse outcome than a wrong guess here.
-    if text.isdigit() and awaiting is None and LAST_RESULTS.get(telegram_id):
-        await _apply_to_vacancy_core(update, context, int(text))
+    # "pick vacancy N from the list I just showed you" -- NEVER let this
+    # silently fall through to overwriting real keywords with "1". If
+    # LAST_RESULTS is empty (e.g. the bot restarted and lost its in-memory
+    # cache since the last /search), say so explicitly instead of guessing.
+    if text.isdigit() and awaiting is None:
+        if LAST_RESULTS.get(telegram_id):
+            await _apply_to_vacancy_core(update, context, int(text))
+        else:
+            await update.message.reply_text(
+                "Не вижу список вакансий (возможно, бот перезапускался) — "
+                "нажмите 🔍 Искать вакансии ещё раз, потом можно будет "
+                "присылать номер вакансии.",
+                reply_markup=build_keyboard(telegram_id),
+            )
         return
 
     # Default: any other free-text message (including the first message
