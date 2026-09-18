@@ -33,9 +33,6 @@ def vacancy_to_pdf(vacancy, output_path: str, contact=None):
         # otherwise repeat below, like title/company/link) -- previously
         # this and the plain meta block under the title duplicated those
         # three fields.
-        pdf.set_fill_color(240, 240, 240)
-        pdf.set_font("DejaVu", "B", 12)
-        pdf.multi_cell(0, 7, "Resumé til jobcenter-log", fill=True)
         pdf.set_font("DejaVu", "", 11)
         summary_lines = [
             ("Job", vacancy.title),
