@@ -48,7 +48,7 @@ async def send_with_retry(update: Update, text: str, retries: int = 2, **kwargs)
                 await asyncio.sleep(2 * (attempt + 1))
     raise last_error
 
-BTN_SEARCH = "🟢🔍 ШУКАТИ ВАКАНСІЇ"
+BTN_SEARCH = "🔍 ШУКАТИ ВАКАНСІЇ"
 BTN_KEYWORDS = "🔑 Ключові слова"
 BTN_LOCATION = "📍 Місто"
 BTN_CV = "📄 Моє CV"
