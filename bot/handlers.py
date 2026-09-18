@@ -167,7 +167,9 @@ async def _prompt_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message = (
             "🔵 <b>Надішліть ключові слова через кому</b>, наприклад:\n"
-            "продавець, маркетинг, бухгалтер\n\n"
+            "sælger (продавець), markedsføring (маркетинг), bogholder (бухгалтер)\n\n"
+            "Пошук йде по датських сайтах — краще писати ключові слова "
+            "датською, інакше пошук може нічого не знайти.\n\n"
             "Або натисніть Скасувати, якщо передумали."
         )
     await update.message.reply_text(message, reply_markup=CANCEL_KEYBOARD, parse_mode="HTML")
