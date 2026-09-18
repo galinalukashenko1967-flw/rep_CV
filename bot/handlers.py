@@ -143,13 +143,13 @@ async def _prompt_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current = storage.get_keywords(telegram_id)
     if current:
         message = (
-            "Поточні ключові слова: "
+            "🔵 Поточні ключові слова: "
             + ", ".join(current)
             + "\n\n<b>Щоб змінити — надішліть нові через кому</b>, або натисніть Скасувати."
         )
     else:
         message = (
-            "<b>Надішліть ключові слова через кому</b>, наприклад:\n"
+            "🔵 <b>Надішліть ключові слова через кому</b>, наприклад:\n"
             "продавець, маркетинг, бухгалтер\n\n"
             "Або натисніть Скасувати, якщо передумали."
         )
