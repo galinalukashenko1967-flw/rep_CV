@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 
 from bot import storage
 from bot.config import UPLOADS_DIR
+from bot.matching import compute_match
 from bot.search import search_all
 
 logger = logging.getLogger(__name__)
@@ -249,11 +250,17 @@ async def cv_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _reply_with_next_step(update, telegram_id, message)
 
 
-def format_vacancy(index: int, v) -> str:
+def format_vacancy(index: int, v, match) -> str:
     parts = [f"{index}. {v.title}"]
     meta = " | ".join(p for p in [v.company, v.location, v.source] if p)
     if meta:
         parts.append(meta)
+    if match.matched_keywords:
+        parts.append(
+            f"Совпадение: {match.percent}% (по словам: {', '.join(match.matched_keywords)})"
+        )
+    else:
+        parts.append(f"Совпадение: {match.percent}%")
     parts.append(v.url)
     return "\n".join(parts)
 
@@ -293,20 +300,24 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    scored = [(v, compute_match(v, keywords)) for v in new_vacancies]
+    scored.sort(key=lambda pair: pair[1].percent, reverse=True)
+
     MAX_RESULTS = 20
-    to_send = new_vacancies[:MAX_RESULTS]
+    to_send = scored[:MAX_RESULTS]
 
     sent_urls = []
     for i in range(0, len(to_send), 5):
         chunk = to_send[i : i + 5]
         text = "\n\n".join(
-            format_vacancy(i + j + 1, v) for j, v in enumerate(chunk)
+            format_vacancy(i + j + 1, v, match)
+            for j, (v, match) in enumerate(chunk)
         )
         # If this raises after retries, mark_seen below still records
         # whatever went out in earlier chunks, so a retried /search
         # doesn't re-send vacancies the person already saw.
         await send_with_retry(update, text, disable_web_page_preview=True)
-        sent_urls.extend(v.url for v in chunk if v.url)
+        sent_urls.extend(v.url for v, match in chunk if v.url)
 
     storage.mark_seen(telegram_id, sent_urls)
 
