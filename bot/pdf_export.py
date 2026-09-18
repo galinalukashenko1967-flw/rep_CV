@@ -29,6 +29,10 @@ def vacancy_to_pdf(vacancy, output_path: str, contact=None):
     pdf.set_margins(20, 20, 20)
 
     if contact is not None:
+        # One summary block with everything (including fields that would
+        # otherwise repeat below, like title/company/link) -- previously
+        # this and the plain meta block under the title duplicated those
+        # three fields.
         pdf.set_fill_color(240, 240, 240)
         pdf.set_font("DejaVu", "B", 12)
         pdf.multi_cell(0, 7, "Для лога / отчётности — сводка", fill=True)
@@ -36,40 +40,44 @@ def vacancy_to_pdf(vacancy, output_path: str, contact=None):
         summary_lines = [
             ("Вакансия", vacancy.title),
             ("Компания", vacancy.company),
+            ("Место", vacancy.location),
+            ("Источник", vacancy.source),
             ("Контактное лицо", contact.name),
             ("Телефон", contact.phone),
             ("Email", contact.email),
             ("Ссылка", vacancy.url),
         ]
         for label, value in summary_lines:
+            if not value:
+                continue
             pdf.set_font("DejaVu", "B", 11)
             pdf.write(6, f"{label}: ")
             pdf.set_font("DejaVu", "", 11)
-            pdf.write(6, value or "")
+            pdf.write(6, value)
             pdf.ln(7)
         pdf.ln(6)
+    else:
+        pdf.set_font("DejaVu", "B", 14)
+        pdf.multi_cell(0, 8, vacancy.title)
+        pdf.ln(2)
 
-    pdf.set_font("DejaVu", "B", 14)
-    pdf.multi_cell(0, 8, vacancy.title)
-    pdf.ln(2)
-
-    pdf.set_font("DejaVu", "", 11)
-    meta_lines = [
-        ("Компания", vacancy.company),
-        ("Место", vacancy.location),
-        ("Источник", vacancy.source),
-        ("Ссылка", vacancy.url),
-    ]
-    for label, value in meta_lines:
-        if not value:
-            continue
-        pdf.set_font("DejaVu", "B", 11)
-        pdf.write(6, f"{label}: ")
         pdf.set_font("DejaVu", "", 11)
-        pdf.write(6, value)
-        pdf.ln(7)
+        meta_lines = [
+            ("Компания", vacancy.company),
+            ("Место", vacancy.location),
+            ("Источник", vacancy.source),
+            ("Ссылка", vacancy.url),
+        ]
+        for label, value in meta_lines:
+            if not value:
+                continue
+            pdf.set_font("DejaVu", "B", 11)
+            pdf.write(6, f"{label}: ")
+            pdf.set_font("DejaVu", "", 11)
+            pdf.write(6, value)
+            pdf.ln(7)
 
-    pdf.ln(4)
+        pdf.ln(4)
     pdf.set_font("DejaVu", "B", 12)
     pdf.multi_cell(0, 7, "Описание вакансии")
     pdf.ln(1)
