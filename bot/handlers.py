@@ -14,10 +14,33 @@ BTN_KEYWORDS = "🔑 Ключевые слова"
 BTN_LOCATION = "📍 Город"
 BTN_CV = "📄 Моё CV"
 
-MAIN_KEYBOARD = ReplyKeyboardMarkup(
-    [[BTN_SEARCH], [BTN_KEYWORDS, BTN_LOCATION], [BTN_CV]],
-    resize_keyboard=True,
-)
+# Required before the Search button appears at all.
+REQUIRED_FOR_SEARCH = (BTN_KEYWORDS, BTN_CV)
+
+
+def _is_ready_for_search(telegram_id: int) -> bool:
+    user = storage.get_user(telegram_id) or {}
+    has_keywords = bool(storage.get_keywords(telegram_id))
+    has_cv = bool(user.get("cv_path"))
+    return has_keywords and has_cv
+
+
+def build_keyboard(telegram_id: int) -> ReplyKeyboardMarkup:
+    rows = [[BTN_KEYWORDS, BTN_LOCATION], [BTN_CV]]
+    if _is_ready_for_search(telegram_id):
+        rows.insert(0, [BTN_SEARCH])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+
+def _missing_requirements(telegram_id: int) -> list[str]:
+    missing = []
+    if not storage.get_keywords(telegram_id):
+        missing.append(BTN_KEYWORDS)
+    user = storage.get_user(telegram_id) or {}
+    if not user.get("cv_path"):
+        missing.append(BTN_CV)
+    return missing
+
 
 WELCOME = (
     "Привет! Я ищу вакансии на Jobindex.dk, Jobnet.dk и IT-jobbank.dk "
@@ -25,26 +48,38 @@ WELCOME = (
     "Пользуйтесь кнопками внизу экрана:\n"
     f"{BTN_KEYWORDS} — задать свои ключевые слова через запятую\n"
     f"{BTN_LOCATION} — необязательно, отфильтровать по городу\n"
-    f"{BTN_CV} — загрузить/проверить своё CV (PDF или Word — просто отправьте файл)\n"
-    f"{BTN_SEARCH} — запустить поиск"
+    f"{BTN_CV} — загрузить/проверить своё CV (PDF или Word — просто отправьте файл)\n\n"
+    f"Кнопка {BTN_SEARCH} появится, когда заполните ключевые слова и CV."
 )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    storage.ensure_user(update.effective_user.id)
+    telegram_id = update.effective_user.id
+    storage.ensure_user(telegram_id)
     context.user_data.pop("awaiting", None)
-    await update.message.reply_text(WELCOME, reply_markup=MAIN_KEYBOARD)
+    await update.message.reply_text(WELCOME, reply_markup=build_keyboard(telegram_id))
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(WELCOME, reply_markup=MAIN_KEYBOARD)
+    await update.message.reply_text(
+        WELCOME, reply_markup=build_keyboard(update.effective_user.id)
+    )
+
+
+async def _reply_with_next_step(update: Update, telegram_id: int, done_message: str):
+    missing = _missing_requirements(telegram_id)
+    if missing:
+        done_message += "\n\nОсталось заполнить: " + ", ".join(missing)
+    await update.message.reply_text(
+        done_message, reply_markup=build_keyboard(telegram_id)
+    )
 
 
 async def _save_keywords(update: Update, telegram_id: int, text: str):
     keywords = [k.strip() for k in text.split(",") if k.strip()]
     storage.set_keywords(telegram_id, keywords)
-    await update.message.reply_text(
-        "Сохранил ключевые слова: " + ", ".join(keywords)
+    await _reply_with_next_step(
+        update, telegram_id, "Сохранил ключевые слова: " + ", ".join(keywords)
     )
 
 
@@ -76,10 +111,12 @@ async def set_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _save_location(update: Update, telegram_id: int, text: str):
     storage.set_location(telegram_id, text)
-    if text:
-        await update.message.reply_text(f"Буду фильтровать по городу: {text}")
-    else:
-        await update.message.reply_text("Фильтр по городу снят — ищу по всей Дании.")
+    message = (
+        f"Буду фильтровать по городу: {text}"
+        if text
+        else "Фильтр по городу снят — ищу по всей Дании."
+    )
+    await _reply_with_next_step(update, telegram_id, message)
 
 
 async def _prompt_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -159,15 +196,17 @@ async def handle_cv_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await tg_file.download_to_drive(custom_path=str(dest_path))
 
     storage.set_cv_path(telegram_id, str(dest_path))
-    await update.message.reply_text(f"CV сохранил: {filename}")
+    await _reply_with_next_step(update, telegram_id, f"CV сохранил: {filename}")
 
 
 async def cv_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = storage.get_user(update.effective_user.id)
+    telegram_id = update.effective_user.id
+    user = storage.get_user(telegram_id)
     if user and user.get("cv_path"):
-        await update.message.reply_text(f"Загруженное CV: {user['cv_path'].split('/')[-1]}")
+        message = f"Загруженное CV: {user['cv_path'].split('/')[-1]}"
     else:
-        await update.message.reply_text("CV ещё не загружено — пришлите файл документом.")
+        message = "CV ещё не загружено — пришлите файл документом (PDF или Word)."
+    await _reply_with_next_step(update, telegram_id, message)
 
 
 def format_vacancy(index: int, v) -> str:
@@ -181,13 +220,15 @@ def format_vacancy(index: int, v) -> str:
 
 async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
-    keywords = storage.get_keywords(telegram_id)
-    if not keywords:
+    missing = _missing_requirements(telegram_id)
+    if missing:
         await update.message.reply_text(
-            f"Сначала задайте ключевые слова: нажмите {BTN_KEYWORDS}"
+            "Сначала заполните: " + ", ".join(missing),
+            reply_markup=build_keyboard(telegram_id),
         )
         return
 
+    keywords = storage.get_keywords(telegram_id)
     user = storage.get_user(telegram_id)
     location = (user or {}).get("location") or None
 
@@ -205,7 +246,8 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not new_vacancies:
         await update.message.reply_text(
-            "Новых вакансий не нашлось (или все уже присылал раньше)."
+            "Новых вакансий не нашлось (или все уже присылал раньше).",
+            reply_markup=build_keyboard(telegram_id),
         )
         return
 
@@ -221,8 +263,10 @@ async def run_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     storage.mark_seen(telegram_id, [v.url for v in to_send if v.url])
 
-    if len(new_vacancies) > MAX_RESULTS:
-        await update.message.reply_text(
-            f"...и ещё {len(new_vacancies) - MAX_RESULTS}. "
-            f"Уточните ключевые слова или город, чтобы сузить список."
-        )
+    footer = (
+        f"...и ещё {len(new_vacancies) - MAX_RESULTS}. "
+        f"Уточните ключевые слова или город, чтобы сузить список."
+        if len(new_vacancies) > MAX_RESULTS
+        else "Это все новые вакансии на сейчас."
+    )
+    await update.message.reply_text(footer, reply_markup=build_keyboard(telegram_id))
