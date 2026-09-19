@@ -151,7 +151,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Задали ключові слова: {s['with_keywords']}\n"
         f"Вказали місто: {s['with_location']}\n"
         f"Хоч раз запускали пошук: {s['searched']}\n"
-        f"Пояснювали лист комуни/SKAT: {s['used_letter_explain']} "
+        f"Пояснювали лист/документ: {s['used_letter_explain']} "
         f"(всього листів: {s['letters_explained_total']})"
     )
 

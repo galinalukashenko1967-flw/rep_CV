@@ -31,5 +31,6 @@ RESULTS_PER_KEYWORD = 30
 # Telegram numeric ID allowed to run /stats -- everyone else gets no reply.
 ADMIN_TELEGRAM_ID = 2104700983
 
-# Own test accounts excluded from /stats counts (not real users).
-EXCLUDED_TELEGRAM_IDS = {7644385945}
+# Own test accounts excluded from /stats counts (not real users) --
+# includes the admin's own account, so /stats shows only actual testers.
+EXCLUDED_TELEGRAM_IDS = {7644385945, ADMIN_TELEGRAM_ID}
