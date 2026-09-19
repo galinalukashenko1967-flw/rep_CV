@@ -417,7 +417,7 @@ async def _handle_letter_document(update: Update, context: ContextTypes.DEFAULT_
         )
         return
 
-    await update.message.reply_text(explanation, reply_markup=build_keyboard(telegram_id))
+    await update.message.reply_text(_strip_html(explanation), reply_markup=build_keyboard(telegram_id))
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -444,7 +444,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    await update.message.reply_text(explanation, reply_markup=build_keyboard(telegram_id))
+    await update.message.reply_text(_strip_html(explanation), reply_markup=build_keyboard(telegram_id))
 
 
 async def handle_cv_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
