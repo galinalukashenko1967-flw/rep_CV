@@ -13,7 +13,7 @@ from telegram import (
     Update,
 )
 from telegram.error import NetworkError, TimedOut
-from telegram.ext import ApplicationHandlerStop, ContextTypes
+from telegram.ext import ContextTypes
 
 from bot import cv_parser, storage
 from bot.danish_cities import resolve_city
@@ -30,24 +30,6 @@ from bot.translation import translate_to_ukrainian
 
 logger = logging.getLogger(__name__)
 
-
-PRIVATE_BOT_MESSAGE = "Цей бот приватний і зараз недоступний для інших користувачів."
-
-
-async def gatekeeper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Single point of access control: bot is restricted to the admin's
-    own account only. Registered in its own handler group (see main.py)
-    that runs before everything else, so no individual handler can be
-    accidentally left open to other users."""
-    user = update.effective_user
-    if user is not None and user.id == ADMIN_TELEGRAM_ID:
-        return
-
-    if update.callback_query:
-        await update.callback_query.answer(PRIVATE_BOT_MESSAGE, show_alert=True)
-    elif update.effective_message:
-        await update.effective_message.reply_text(PRIVATE_BOT_MESSAGE)
-    raise ApplicationHandlerStop
 
 
 async def send_with_retry(update: Update, text: str, retries: int = 2, **kwargs):
