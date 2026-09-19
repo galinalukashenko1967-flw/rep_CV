@@ -58,7 +58,7 @@ BTN_CV = "📄 Моє CV"
 BTN_CANCEL = "❌ Скасувати"
 BTN_ALL_DENMARK = "🌍 Уся Данія"
 BTN_RESET_SEEN = "🔄 Показати вакансії знову"
-BTN_EXPLAIN_LETTER = "📨 Пояснити лист (комуна/SKAT/будь-який документ/будь-яка мова)"
+BTN_EXPLAIN_LETTER = "📨 Пояснити лист/документ"
 
 # Required before the Search button appears at all.
 REQUIRED_FOR_SEARCH = (BTN_KEYWORDS, BTN_CV)
@@ -288,9 +288,9 @@ async def set_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _prompt_explain_letter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📨 Надішліть лист, який хочете зрозуміти — <b>фото або PDF-файл</b> "
-        "(наприклад, лист від kommune чи SKAT). Поясню простими словами "
-        "українською: від кого лист, що треба зробити і до якого терміну.\n\n"
+        "📨 Надішліть документ, який хочете зрозуміти — <b>фото або PDF-файл</b>, "
+        "будь-якою мовою (не обов'язково данською, не обов'язково від kommune чи SKAT). "
+        "Поясню простими словами українською: від кого лист, що треба зробити і до якого терміну.\n\n"
         "Це пояснення від ШІ для орієнтування, не офіційна консультація.",
         reply_markup=CANCEL_KEYBOARD,
         parse_mode="HTML",
