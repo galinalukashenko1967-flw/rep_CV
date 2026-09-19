@@ -7,6 +7,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    TypeHandler,
     filters,
 )
 
@@ -49,6 +50,11 @@ def main():
         .get_updates_read_timeout(20)
         .build()
     )
+
+    # Runs before every other handler (negative group = higher priority) --
+    # bot is restricted to the admin's own account only, see the docstring
+    # on handlers.gatekeeper.
+    app.add_handler(TypeHandler(Update, handlers.gatekeeper), group=-1)
 
     app.add_handler(CommandHandler("start", handlers.start))
     app.add_handler(CommandHandler("help", handlers.help_cmd))
