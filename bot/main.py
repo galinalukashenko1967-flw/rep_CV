@@ -31,7 +31,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     if isinstance(update, Update) and update.effective_message:
         try:
             await update.effective_message.reply_text(
-                "Что-то пошло не так (похоже, сбой сети). Попробуйте ещё раз."
+                "Щось пішло не так (схоже, збій мережі). Спробуйте ще раз."
             )
         except Exception:
             logger.exception("Could not even notify the user about the earlier error")
@@ -58,6 +58,7 @@ def main():
     app.add_handler(CommandHandler("search", handlers.run_search))
     app.add_handler(CommandHandler("reset", handlers.reset_seen))
     app.add_handler(CommandHandler("apply", handlers.apply_to_vacancy))
+    app.add_handler(CommandHandler("stats", handlers.stats))
     app.add_handler(CallbackQueryHandler(handlers.handle_callback))
     app.add_handler(MessageHandler(filters.Document.ALL, handlers.handle_cv_upload))
     app.add_handler(

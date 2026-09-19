@@ -17,7 +17,7 @@ from telegram.ext import ContextTypes
 
 from bot import cv_parser, storage
 from bot.danish_cities import resolve_city
-from bot.config import UPLOADS_DIR
+from bot.config import ADMIN_TELEGRAM_ID, UPLOADS_DIR
 from bot.contact_extraction import extract_contact_info
 from bot.letter_generation import generate_cover_letter
 from bot.matching import compute_match
@@ -135,6 +135,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         WELCOME, reply_markup=build_keyboard(update.effective_user.id)
+    )
+
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_TELEGRAM_ID:
+        return
+    s = storage.get_stats()
+    await update.message.reply_text(
+        "📊 Статистика бота\n\n"
+        f"Всього унікальних людей, що запускали бота: {s['total']}\n"
+        f"Завантажили CV: {s['with_cv']}\n"
+        f"Задали ключові слова: {s['with_keywords']}\n"
+        f"Вказали місто: {s['with_location']}\n"
+        f"Хоч раз запускали пошук: {s['searched']}"
     )
 
 

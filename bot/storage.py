@@ -158,6 +158,33 @@ def get_last_results(telegram_id: int) -> list[tuple[Vacancy, int, str]]:
         return []
 
 
+def get_stats() -> dict:
+    """Basic usage counts for the /stats admin command -- how many people
+    have ever started the bot (one row per unique telegram_id) and how far
+    they got through setup."""
+    with get_conn() as conn:
+        total = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+        with_cv = conn.execute(
+            "SELECT COUNT(*) AS n FROM users WHERE cv_text IS NOT NULL AND cv_text != ''"
+        ).fetchone()["n"]
+        with_keywords = conn.execute(
+            "SELECT COUNT(*) AS n FROM users WHERE keywords IS NOT NULL AND keywords != ''"
+        ).fetchone()["n"]
+        with_location = conn.execute(
+            "SELECT COUNT(*) AS n FROM users WHERE location IS NOT NULL AND location != ''"
+        ).fetchone()["n"]
+        searched = conn.execute(
+            "SELECT COUNT(*) AS n FROM users WHERE last_results IS NOT NULL AND last_results != ''"
+        ).fetchone()["n"]
+    return {
+        "total": total,
+        "with_cv": with_cv,
+        "with_keywords": with_keywords,
+        "with_location": with_location,
+        "searched": searched,
+    }
+
+
 def filter_unseen(telegram_id: int, urls: list[str]) -> set[str]:
     with get_conn() as conn:
         rows = conn.execute(

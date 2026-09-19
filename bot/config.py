@@ -27,3 +27,6 @@ HTTP_USER_AGENT = (
 
 # how many vacancies each source returns per keyword before dedup/limiting
 RESULTS_PER_KEYWORD = 30
+
+# Telegram numeric ID allowed to run /stats -- everyone else gets no reply.
+ADMIN_TELEGRAM_ID = 2104700983
