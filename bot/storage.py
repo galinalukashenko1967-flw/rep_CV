@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS users (
     cv_path TEXT DEFAULT NULL,
     cv_text TEXT DEFAULT NULL,
     location TEXT DEFAULT '',
-    last_results TEXT DEFAULT NULL
+    last_results TEXT DEFAULT NULL,
+    letters_explained_count INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS seen_vacancies (
@@ -46,6 +47,10 @@ def init_db():
             conn.execute("ALTER TABLE users ADD COLUMN cv_text TEXT DEFAULT NULL")
         if "last_results" not in columns:
             conn.execute("ALTER TABLE users ADD COLUMN last_results TEXT DEFAULT NULL")
+        if "letters_explained_count" not in columns:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN letters_explained_count INTEGER DEFAULT 0"
+            )
 
 
 def get_user(telegram_id: int):
@@ -158,6 +163,16 @@ def get_last_results(telegram_id: int) -> list[tuple[Vacancy, int, str]]:
         return []
 
 
+def increment_letters_explained(telegram_id: int):
+    ensure_user(telegram_id)
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET letters_explained_count = letters_explained_count + 1 "
+            "WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+
+
 def get_stats() -> dict:
     """Basic usage counts for the /stats admin command -- how many people
     have ever started the bot (one row per unique telegram_id) and how far
@@ -191,12 +206,24 @@ def get_stats() -> dict:
             "AND last_results IS NOT NULL AND last_results != ''",
             params,
         ).fetchone()["n"]
+        used_letter_explain = conn.execute(
+            f"SELECT COUNT(*) AS n FROM users WHERE {exclude_clause} "
+            "AND letters_explained_count > 0",
+            params,
+        ).fetchone()["n"]
+        letters_explained_total = conn.execute(
+            f"SELECT COALESCE(SUM(letters_explained_count), 0) AS n FROM users "
+            f"WHERE {exclude_clause}",
+            params,
+        ).fetchone()["n"]
     return {
         "total": total,
         "with_cv": with_cv,
         "with_keywords": with_keywords,
         "with_location": with_location,
         "searched": searched,
+        "used_letter_explain": used_letter_explain,
+        "letters_explained_total": letters_explained_total,
     }
 
 

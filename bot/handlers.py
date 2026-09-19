@@ -150,7 +150,9 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Завантажили CV: {s['with_cv']}\n"
         f"Задали ключові слова: {s['with_keywords']}\n"
         f"Вказали місто: {s['with_location']}\n"
-        f"Хоч раз запускали пошук: {s['searched']}"
+        f"Хоч раз запускали пошук: {s['searched']}\n"
+        f"Пояснювали лист комуни/SKAT: {s['used_letter_explain']} "
+        f"(всього листів: {s['letters_explained_total']})"
     )
 
 
@@ -417,6 +419,7 @@ async def _handle_letter_document(update: Update, context: ContextTypes.DEFAULT_
         )
         return
 
+    storage.increment_letters_explained(telegram_id)
     await update.message.reply_text(_strip_html(explanation), reply_markup=build_keyboard(telegram_id))
 
 
@@ -444,6 +447,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    storage.increment_letters_explained(telegram_id)
     await update.message.reply_text(_strip_html(explanation), reply_markup=build_keyboard(telegram_id))
 
 
