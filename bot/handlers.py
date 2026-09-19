@@ -58,7 +58,7 @@ BTN_CV = "📄 Моє CV"
 BTN_CANCEL = "❌ Скасувати"
 BTN_ALL_DENMARK = "🌍 Уся Данія"
 BTN_RESET_SEEN = "🔄 Показати вакансії знову"
-BTN_EXPLAIN_LETTER = "📨 Пояснити лист/документ"
+BTN_EXPLAIN_LETTER = "📨 Пояснити лист/документ\n(будь-який документ, будь-яка мова)"
 
 # Required before the Search button appears at all.
 REQUIRED_FOR_SEARCH = (BTN_KEYWORDS, BTN_CV)
