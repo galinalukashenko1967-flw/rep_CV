@@ -19,6 +19,7 @@ from bot import cv_parser, storage
 from bot.danish_cities import resolve_city
 from bot.config import ADMIN_TELEGRAM_ID, UPLOADS_DIR
 from bot.contact_extraction import extract_contact_info
+from bot.letter_explainer import explain_letter_image, explain_letter_text
 from bot.letter_generation import generate_cover_letter
 from bot.matching import compute_match
 from bot.pdf_export import _strip_html, letter_to_pdf, vacancy_to_pdf
@@ -57,6 +58,7 @@ BTN_CV = "📄 Моє CV"
 BTN_CANCEL = "❌ Скасувати"
 BTN_ALL_DENMARK = "🌍 Уся Данія"
 BTN_RESET_SEEN = "🔄 Показати вакансії знову"
+BTN_EXPLAIN_LETTER = "📨 Пояснити лист (комуна/SKAT)"
 
 # Required before the Search button appears at all.
 REQUIRED_FOR_SEARCH = (BTN_KEYWORDS, BTN_CV)
@@ -70,7 +72,7 @@ def _is_ready_for_search(telegram_id: int) -> bool:
 
 
 def build_keyboard(telegram_id: int) -> ReplyKeyboardMarkup:
-    rows = [[BTN_KEYWORDS, BTN_LOCATION], [BTN_CV], [BTN_RESET_SEEN]]
+    rows = [[BTN_KEYWORDS, BTN_LOCATION], [BTN_CV], [BTN_RESET_SEEN], [BTN_EXPLAIN_LETTER]]
     if _is_ready_for_search(telegram_id):
         rows.insert(0, [BTN_SEARCH])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
@@ -282,6 +284,18 @@ async def set_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _resolve_and_save_location(update, context, telegram_id, text)
 
 
+async def _prompt_explain_letter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📨 Надішліть лист, який хочете зрозуміти — <b>фото або PDF-файл</b> "
+        "(наприклад, лист від kommune чи SKAT). Поясню простими словами "
+        "українською: від кого лист, що треба зробити і до якого терміну.\n\n"
+        "Це пояснення від ШІ для орієнтування, не офіційна консультація.",
+        reply_markup=CANCEL_KEYBOARD,
+        parse_mode="HTML",
+    )
+    context.user_data["awaiting"] = "letter"
+
+
 async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     text = (update.message.text or "").strip()
@@ -313,12 +327,23 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == BTN_RESET_SEEN:
         await reset_seen(update, context)
         return
+    if text == BTN_EXPLAIN_LETTER:
+        await _prompt_explain_letter(update, context)
+        return
 
     awaiting = context.user_data.pop("awaiting", None)
     if awaiting == "location":
         if text.lower() in ("нет", "ні", "no", "-"):
             text = ""
         await _resolve_and_save_location(update, context, telegram_id, text)
+        return
+    if awaiting == "letter":
+        await update.message.reply_text(
+            "Це має бути фото або PDF-файл листа, не текст. Надішліть, будь ласка, "
+            "документом або фотографією.",
+            reply_markup=CANCEL_KEYBOARD,
+        )
+        context.user_data["awaiting"] = "letter"
         return
 
     # A bare number (no /apply, no other pending state) almost always means
@@ -341,6 +366,85 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Default: any other free-text message (including the first message
     # after tapping "Ключові слова") is treated as a keywords update.
     await _save_keywords(update, telegram_id, text)
+
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get("awaiting") == "letter":
+        await _handle_letter_document(update, context)
+        return
+    await handle_cv_upload(update, context)
+
+
+async def _handle_letter_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("awaiting", None)
+    telegram_id = update.effective_user.id
+    document: Document = update.message.document
+    filename = (document.file_name or "letter").lower()
+
+    if not filename.endswith(".pdf"):
+        await update.message.reply_text(
+            f"Приймаю лист лише як фото або PDF. Спробуйте ще раз через «{BTN_EXPLAIN_LETTER}».",
+            reply_markup=build_keyboard(telegram_id),
+        )
+        return
+
+    await send_with_retry(update, "Читаю лист...")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        dest = Path(tmp_dir) / filename
+        tg_file = await document.get_file()
+        await tg_file.download_to_drive(custom_path=str(dest))
+        try:
+            text = await asyncio.to_thread(cv_parser.extract_text, str(dest))
+        except Exception:
+            text = ""
+
+    if len((text or "").strip()) < 30:
+        await update.message.reply_text(
+            "Не вдалося прочитати текст з цього PDF (можливо, це скан-зображення). "
+            f"Спробуйте надіслати фото листа замість PDF через «{BTN_EXPLAIN_LETTER}».",
+            reply_markup=build_keyboard(telegram_id),
+        )
+        return
+
+    try:
+        explanation = await asyncio.to_thread(explain_letter_text, text)
+    except Exception:
+        logger.exception("Letter explanation (PDF) failed for %s", telegram_id)
+        await update.message.reply_text(
+            "Не вдалося пояснити лист (збій моделі). Спробуйте ще раз.",
+            reply_markup=build_keyboard(telegram_id),
+        )
+        return
+
+    await update.message.reply_text(explanation, reply_markup=build_keyboard(telegram_id))
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get("awaiting") != "letter":
+        # Stray photo outside the letter-explain flow -- CVs are never
+        # uploaded as photos in this bot, so there's nothing useful to do.
+        return
+    context.user_data.pop("awaiting", None)
+    telegram_id = update.effective_user.id
+
+    await send_with_retry(update, "Читаю лист...")
+
+    photo = update.message.photo[-1]  # largest resolution
+    tg_file = await photo.get_file()
+    photo_bytes = bytes(await tg_file.download_as_bytearray())
+
+    try:
+        explanation = await asyncio.to_thread(explain_letter_image, photo_bytes, "image/jpeg")
+    except Exception:
+        logger.exception("Letter explanation (photo) failed for %s", telegram_id)
+        await update.message.reply_text(
+            "Не вдалося пояснити лист (збій моделі). Спробуйте ще раз.",
+            reply_markup=build_keyboard(telegram_id),
+        )
+        return
+
+    await update.message.reply_text(explanation, reply_markup=build_keyboard(telegram_id))
 
 
 async def handle_cv_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):

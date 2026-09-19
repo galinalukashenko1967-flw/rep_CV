@@ -35,19 +35,26 @@ def truncate(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + "..."
 
 
-def generate_with_retry(prompt: str, *, json_mode: bool = False, retries: int = 3):
+def generate_with_retry(
+    prompt: str = None, *, contents=None, json_mode: bool = False, retries: int = 3
+):
     """Gemini's free tier returns transient 503s ("high demand") fairly
     often -- retry with backoff before giving up, rather than surfacing
-    that as a hard failure for what's usually a one-shot glitch."""
+    that as a hard failure for what's usually a one-shot glitch.
+
+    Pass either a plain text `prompt`, or `contents` directly (e.g. a
+    [text, image_part] list for multimodal calls -- see
+    bot/letter_explainer.py)."""
     client = get_client()
     config = types.GenerateContentConfig(
         response_mime_type="application/json" if json_mode else None
     )
+    final_contents = contents if contents is not None else prompt
     last_error = None
     for attempt in range(retries + 1):
         try:
             return client.models.generate_content(
-                model=MODEL, contents=prompt, config=config
+                model=MODEL, contents=final_contents, config=config
             )
         except genai_errors.ServerError as exc:
             last_error = exc

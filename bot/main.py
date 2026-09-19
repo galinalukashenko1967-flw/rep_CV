@@ -60,7 +60,8 @@ def main():
     app.add_handler(CommandHandler("apply", handlers.apply_to_vacancy))
     app.add_handler(CommandHandler("stats", handlers.stats))
     app.add_handler(CallbackQueryHandler(handlers.handle_callback))
-    app.add_handler(MessageHandler(filters.Document.ALL, handlers.handle_cv_upload))
+    app.add_handler(MessageHandler(filters.Document.ALL, handlers.handle_document))
+    app.add_handler(MessageHandler(filters.PHOTO, handlers.handle_photo))
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_plain_text)
     )
