@@ -3,7 +3,7 @@ import sqlite3
 from contextlib import contextmanager
 from dataclasses import asdict
 
-from bot.config import DB_PATH
+from bot.config import DB_PATH, EXCLUDED_TELEGRAM_IDS
 from bot.sources import Vacancy
 
 SCHEMA = """
@@ -161,20 +161,35 @@ def get_last_results(telegram_id: int) -> list[tuple[Vacancy, int, str]]:
 def get_stats() -> dict:
     """Basic usage counts for the /stats admin command -- how many people
     have ever started the bot (one row per unique telegram_id) and how far
-    they got through setup."""
+    they got through setup. Own test accounts (EXCLUDED_TELEGRAM_IDS) don't
+    count as real users."""
+    placeholders = ",".join("?" for _ in EXCLUDED_TELEGRAM_IDS) or "NULL"
+    exclude_clause = f"telegram_id NOT IN ({placeholders})"
+    params = tuple(EXCLUDED_TELEGRAM_IDS)
+
     with get_conn() as conn:
-        total = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+        total = conn.execute(
+            f"SELECT COUNT(*) AS n FROM users WHERE {exclude_clause}", params
+        ).fetchone()["n"]
         with_cv = conn.execute(
-            "SELECT COUNT(*) AS n FROM users WHERE cv_text IS NOT NULL AND cv_text != ''"
+            f"SELECT COUNT(*) AS n FROM users WHERE {exclude_clause} "
+            "AND cv_text IS NOT NULL AND cv_text != ''",
+            params,
         ).fetchone()["n"]
         with_keywords = conn.execute(
-            "SELECT COUNT(*) AS n FROM users WHERE keywords IS NOT NULL AND keywords != ''"
+            f"SELECT COUNT(*) AS n FROM users WHERE {exclude_clause} "
+            "AND keywords IS NOT NULL AND keywords != ''",
+            params,
         ).fetchone()["n"]
         with_location = conn.execute(
-            "SELECT COUNT(*) AS n FROM users WHERE location IS NOT NULL AND location != ''"
+            f"SELECT COUNT(*) AS n FROM users WHERE {exclude_clause} "
+            "AND location IS NOT NULL AND location != ''",
+            params,
         ).fetchone()["n"]
         searched = conn.execute(
-            "SELECT COUNT(*) AS n FROM users WHERE last_results IS NOT NULL AND last_results != ''"
+            f"SELECT COUNT(*) AS n FROM users WHERE {exclude_clause} "
+            "AND last_results IS NOT NULL AND last_results != ''",
+            params,
         ).fetchone()["n"]
     return {
         "total": total,
