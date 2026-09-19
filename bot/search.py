@@ -11,13 +11,26 @@ SOURCE_FUNCS = [search_jobindex, search_jobnet, search_itjobbank]
 
 def search_keyword(keyword: str) -> list[Vacancy]:
     results: list[Vacancy] = []
+    needle = keyword.strip().lower()
     for func in SOURCE_FUNCS:
         try:
-            results.extend(func(keyword))
+            found = func(keyword)
         except Exception:
             # A source going down (blocked, changed API, network hiccup)
             # should not take the whole search down with it.
             logger.exception("Source %s failed for keyword %r", func.__module__, keyword)
+            continue
+        # Some sources' own search (Jobindex's RSS in particular) is fuzzy
+        # enough to return vacancies that don't contain the keyword at all
+        # (e.g. searching "maler" returned a bookkeeper posting) -- drop
+        # anything that doesn't actually mention it, rather than trusting
+        # the source's relevance judgment.
+        if needle:
+            found = [
+                v for v in found
+                if needle in f"{v.title} {v.description}".lower()
+            ]
+        results.extend(found)
     return results
 
 
